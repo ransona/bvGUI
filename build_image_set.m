@@ -1,14 +1,14 @@
 function build_image_set()
     % folder of video folders
-    video_folder = '\\AR-LAB-NAS1\DataServer\Remote_Repository\bv_resources\decoder_sets\001';
+    video_folder = 'C:\bv_resources\decoder_sets\001';
     
     % load the default stimulus
     load('C:\bvGUI\stimsets\Templates\image_set.mat');
     default_stim = expData.stims;
     
     % variables
-    expData.vars = 'width=30; height=30; x=0; y=0; loop=0; speed=30; onset=0; duration=30';
-    expData.iti = '1';
+    expData.vars = 'width=90; height=60; x=-90; y=0; loop=0; speed=30; onset=0; duration=30;';
+    expData.iti = '0';
     expData.seqreps = '1';
     
     % set stim properties to use variables
