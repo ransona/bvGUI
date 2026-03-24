@@ -1,14 +1,14 @@
-function build_image_set()
+function build_image_set_zebra()
     config = localReadConfig();
     % folder of video folders
-    video_folder = config.decoder_video_root;
+    video_folder = config.zebra_video_root;
     
     % load the default stimulus
     load(fullfile(config.stimsets_dir,'Templates','image_set.mat'));
     default_stim = expData.stims;
     
     % variables
-    expData.vars = 'width=90; height=60; x=-90; y=0; loop=0; speed=30; onset=0; duration=30;';
+    expData.vars = 'width=90; height=50.6; x=-90; y=0; loop=0; speed=30; onset=0; duration=30;';
     expData.iti = '0';
     expData.seqreps = '1';
     
@@ -63,7 +63,7 @@ function config = localReadConfig()
     ini_data = localParseIni(ini_path);
 
     config.stimsets_dir = localResolvePath(repo_root, localGetIniValue(ini_data,'paths','stimsets_dir',fullfile('bvGUI configs','ar-lab-tl2','stimsets')));
-    config.decoder_video_root = localResolvePath(repo_root, localGetIniValue(ini_data,'media','decoder_video_root','C:\bv_resources\decoder_sets\001'));
+    config.zebra_video_root = localResolvePath(repo_root, localGetIniValue(ini_data,'media','zebra_video_root','C:\bonsai_resources\all_movie_clips_bv_sets'));
 end
 
 function machine_name = localGetMachineName()

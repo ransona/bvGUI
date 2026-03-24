@@ -1,5 +1,5 @@
 <deployment-project plugin="plugin.apptool" plugin-version="1.0">
-  <configuration file="C:\Code\Repos\bvGUI\bvGUI.prj" location="C:\Code\Repos\bvGUI" name="bvGUI" target="target.mlapps" target-name="Package App">
+  <configuration file="${PROJECT_ROOT}\bvGUI.prj" location="${PROJECT_ROOT}" name="bvGUI" target="target.mlapps" target-name="Package App">
     <param.appname>bvGUI</param.appname>
     <param.authnamewatermark />
     <param.email />
@@ -36,16 +36,14 @@
       <file>${PROJECT_ROOT}\bvGUI.mlapp</file>
     </fileset.main>
     <fileset.depfun>
-      <file>C:\Code\Timeline\newExpID.m</file>
-      <file>C:\Code\Timeline\remotePath.m</file>
-      <file>C:\Users\lab\Documents\ranson-rig\src\matlab\Osc.m</file>
-      <file>C:\Users\lab\Documents\ranson-rig\src\matlab\OscTcp.m</file>
-      <file>C:\Users\lab\Documents\ranson-rig\src\matlab\Rig.m</file>
+      <file>${PROJECT_ROOT}\bv_matlab\Osc.m</file>
+      <file>${PROJECT_ROOT}\bv_matlab\OscTcp.m</file>
+      <file>${PROJECT_ROOT}\bv_matlab\Rig.m</file>
     </fileset.depfun>
     <fileset.resources />
     <fileset.package />
     <build-deliverables>
-      <file location="C:\Code\Repos" name="bvGUI" optional="false">C:\Code\Repos\bvGUI</file>
+      <file location="${PROJECT_ROOT}" name="bvGUI" optional="false">${PROJECT_ROOT}</file>
     </build-deliverables>
     <workflow />
     <matlab>
