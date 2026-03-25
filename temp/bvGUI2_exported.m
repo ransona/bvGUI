@@ -147,11 +147,12 @@ classdef bvGUI < matlab.apps.AppBase
             config.machineName = machineName;
             config.machineConfigRoot = machineConfigRoot;
             config.iniPath = iniPath;
-            config.settingsMat = fullfile(machineConfigRoot,'bvGUISettings.mat');
             config.featuresDir = fullfile(machineConfigRoot,'features');
             config.stimsetsDir = fullfile(machineConfigRoot,'stimsets');
             config.daqStartDir = fullfile(machineConfigRoot,'daqStart');
             config.daqStopDir = fullfile(machineConfigRoot,'daqStop');
+            config.iniData = iniData;
+            config.bvServer = app.getIniValue(iniData,'settings','bv_server','127.0.0.1');
             config.localSaveRoot = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','local_save_root','c:\local_repository'));
             config.remoteSaveRoot = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','remote_save_root','\\AR-LAB-NAS1\DataServer\Remote_Repository'));
             config.pythonExe = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','python_exe',''));
@@ -234,6 +235,44 @@ classdef bvGUI < matlab.apps.AppBase
             if isfield(iniData,sectionName) && isfield(iniData.(sectionName),keyName)
                 value = iniData.(sectionName).(keyName);
             end
+        end
+
+        function iniData = setIniValue(app, iniData, sectionName, keyName, value)
+            sectionName = matlab.lang.makeValidName(lower(sectionName));
+            keyName = matlab.lang.makeValidName(lower(keyName));
+            if ~isfield(iniData,sectionName)
+                iniData.(sectionName) = struct();
+            end
+            iniData.(sectionName).(keyName) = value;
+        end
+
+        function writeIniFile(app, iniPath, iniData)
+            sectionNames = fieldnames(iniData);
+            lines = {};
+            for iSection = 1:numel(sectionNames)
+                sectionName = sectionNames{iSection};
+                if strcmp(sectionName,'global')
+                    continue;
+                end
+                lines{end+1} = ['[', sectionName, ']']; %#ok<AGROW>
+                keyNames = fieldnames(iniData.(sectionName));
+                for iKey = 1:numel(keyNames)
+                    keyName = keyNames{iKey};
+                    keyValue = iniData.(sectionName).(keyName);
+                    if ~(ischar(keyValue) || isstring(keyValue))
+                        keyValue = num2str(keyValue);
+                    end
+                    lines{end+1} = [keyName, ' = ', char(keyValue)]; %#ok<AGROW>
+                end
+                lines{end+1} = ''; %#ok<AGROW>
+            end
+            iniText = strjoin(lines,newline);
+            fid = fopen(iniPath,'w');
+            if fid == -1
+                error('bvGUI:IniWriteFailed','Unable to write ini file: %s', iniPath);
+            end
+            cleaner = onCleanup(@() fclose(fid));
+            fprintf(fid,'%s',iniText);
         end
 
         function resolvedPath = resolveConfigPath(app, repoRoot, configuredPath)
@@ -469,15 +508,7 @@ classdef bvGUI < matlab.apps.AppBase
             app.debugMessage(['Config file: ', config.iniPath]);
             % load settings
             bvData.settings = struct();
-            if exist(config.settingsMat,'file')
-                settingsData = load(config.settingsMat);
-                if isfield(settingsData,'bvGUIsettings')
-                    bvData.settings = settingsData.bvGUIsettings;
-                end
-            end
-            if ~isfield(bvData.settings,'bvServer') || isempty(bvData.settings.bvServer)
-                bvData.settings.bvServer = '127.0.0.1';
-            end
+            bvData.settings.bvServer = config.bvServer;
             app.BVServerEditField.Value = bvData.settings.bvServer;
             % populate new feature list box with feature files
             % find feature files
@@ -1315,12 +1346,10 @@ classdef bvGUI < matlab.apps.AppBase
         function SavesettingsButtonPushed(app, event)
             global bvData;
             config = app.getRepoConfig();
-            bvGUIsettings = bvData.settings;
-            settingsDir = fileparts(config.settingsMat);
-            if ~exist(settingsDir,'dir')
-                mkdir(settingsDir);
-            end
-            save(config.settingsMat,'bvGUIsettings');
+            bvData.settings.bvServer = app.BVServerEditField.Value;
+            iniData = config.iniData;
+            iniData = app.setIniValue(iniData,'settings','bv_server',app.BVServerEditField.Value);
+            app.writeIniFile(config.iniPath, iniData);
         end
 
         % Value changing function: RepsEditField

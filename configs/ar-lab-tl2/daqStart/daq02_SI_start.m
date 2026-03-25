@@ -5,7 +5,7 @@ try
   if ~exist('expID')
     expID = '2016-10-14_09_CFAP049';
   end
-  SI_ip = '158.109.215.110';
+  SI_ip = '158.109.209.18';
   SI_receive_port = 1813;
   SI_send_port = 1814;
   disp('starting SI');

@@ -1,7 +1,7 @@
 function [success,msg] = daq03_EYEPY_stop(expID)
 
 % eyepy server
-address = '158.109.215.179';
+address = '158.109.211.62';
 port = 1813;
 
 if ~exist('expID')
