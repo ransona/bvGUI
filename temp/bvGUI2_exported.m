@@ -134,9 +134,10 @@ classdef bvGUI < matlab.apps.AppBase
             repoRoot = app.getRepoRoot();
             machineName = app.getMachineName();
             configDir = fullfile(repoRoot,'configs');
-            iniPath = fullfile(configDir,machineName,'bvGUI.ini');
+            machineConfigRoot = fullfile(configDir,machineName);
+            iniPath = fullfile(machineConfigRoot,'bvGUI.ini');
             if ~exist(iniPath,'file')
-                iniPath = fullfile(configDir,'default','bvGUI.ini');
+                error('bvGUI:MissingMachineConfig', 'Missing machine config: %s', iniPath);
             end
             iniData = app.readIniFile(iniPath);
 
@@ -144,12 +145,13 @@ classdef bvGUI < matlab.apps.AppBase
             config.repoRoot = repoRoot;
             config.configDir = configDir;
             config.machineName = machineName;
+            config.machineConfigRoot = machineConfigRoot;
             config.iniPath = iniPath;
-            config.settingsMat = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','settings_mat',fullfile('bvGUI configs','ar-lab-tl2','bvGUISettings.mat')));
-            config.featuresDir = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','features_dir',fullfile('bvGUI configs','ar-lab-tl2','features')));
-            config.stimsetsDir = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','stimsets_dir',fullfile('bvGUI configs','ar-lab-tl2','stimsets')));
-            config.daqStartDir = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','daq_start_dir',fullfile('bvGUI configs','ar-lab-tl2','daqStart')));
-            config.daqStopDir = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','daq_stop_dir',fullfile('bvGUI configs','ar-lab-tl2','daqStop')));
+            config.settingsMat = fullfile(machineConfigRoot,'bvGUISettings.mat');
+            config.featuresDir = fullfile(machineConfigRoot,'features');
+            config.stimsetsDir = fullfile(machineConfigRoot,'stimsets');
+            config.daqStartDir = fullfile(machineConfigRoot,'daqStart');
+            config.daqStopDir = fullfile(machineConfigRoot,'daqStop');
             config.localSaveRoot = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','local_save_root','c:\local_repository'));
             config.remoteSaveRoot = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','remote_save_root','\\AR-LAB-NAS1\DataServer\Remote_Repository'));
             config.pythonExe = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','python_exe',''));
@@ -447,10 +449,21 @@ classdef bvGUI < matlab.apps.AppBase
         % Code that executes after component creation
         function startupFcn(app)
             global bvData;
-            config = app.getRepoConfig();
-            app.addRepoSupportPaths(config.repoRoot);
             bvData = [];
             bvData.expData.stims = [];
+            try
+                config = app.getRepoConfig();
+            catch err
+                repoRoot = app.getRepoRoot();
+                machineName = app.getMachineName();
+                missingIni = fullfile(repoRoot,'configs',machineName,'bvGUI.ini');
+                app.debugMessage(['Repo root: ', repoRoot]);
+                app.debugMessage(['Machine config key: ', machineName]);
+                app.debugMessage(['Config error: ', err.message]);
+                app.debugMessage(['Expected config file: ', missingIni]);
+                return;
+            end
+            app.addRepoSupportPaths(config.repoRoot);
             app.debugMessage(['Repo root: ', config.repoRoot]);
             app.debugMessage(['Machine config key: ', config.machineName]);
             app.debugMessage(['Config file: ', config.iniPath]);

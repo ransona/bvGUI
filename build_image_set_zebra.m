@@ -56,13 +56,15 @@ function config = localReadConfig()
     repo_root = fileparts(mfilename('fullpath'));
     config_dir = fullfile(repo_root,'configs');
     machine_name = localGetMachineName();
-    ini_path = fullfile(config_dir,machine_name,'bvGUI.ini');
+    machine_config_root = fullfile(config_dir,machine_name);
+    ini_path = fullfile(machine_config_root,'bvGUI.ini');
     if ~exist(ini_path,'file')
-        ini_path = fullfile(config_dir,'default','bvGUI.ini');
+        machine_config_root = fullfile(config_dir,'default');
+        ini_path = fullfile(machine_config_root,'bvGUI.ini');
     end
     ini_data = localParseIni(ini_path);
 
-    config.stimsets_dir = localResolvePath(repo_root, localGetIniValue(ini_data,'paths','stimsets_dir',fullfile('bvGUI configs','ar-lab-tl2','stimsets')));
+    config.stimsets_dir = fullfile(machine_config_root,'stimsets');
     config.zebra_video_root = localResolvePath(repo_root, localGetIniValue(ini_data,'media','zebra_video_root','C:\bonsai_resources\all_movie_clips_bv_sets'));
 end
 
