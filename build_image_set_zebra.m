@@ -76,7 +76,7 @@ function machine_name = localGetMachineName()
     if isempty(machine_name)
         machine_name = 'default';
     end
-    machine_name = matlab.lang.makeValidName(machine_name);
+    machine_name = strtrim(machine_name);
 end
 
 function ini_data = localParseIni(ini_path)

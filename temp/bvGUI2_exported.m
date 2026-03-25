@@ -166,7 +166,7 @@ classdef bvGUI < matlab.apps.AppBase
             if isempty(machineName)
                 machineName = 'default';
             end
-            machineName = matlab.lang.makeValidName(machineName);
+            machineName = strtrim(machineName);
         end
 
         function addRepoSupportPaths(app, repoRoot)
