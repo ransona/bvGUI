@@ -1,4 +1,4 @@
-function [success,msg] = daq02_SI_start(expID)
+function [success,msg] = daq02_SI1_start(expID)
 % code to start acquisition
 % config for contacting SI UDP listener
 try

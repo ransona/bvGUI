@@ -157,6 +157,8 @@ classdef bvGUI < matlab.apps.AppBase
             config.remoteSaveRoot = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','remote_save_root','\\AR-LAB-NAS1\DataServer\Remote_Repository'));
             config.pythonExe = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','python_exe',''));
             config.hashScript = app.resolveConfigPath(repoRoot, app.getIniValue(iniData,'paths','hash_script',''));
+            config.opto2pListener = strtrim(app.getIniValue(iniData,'network','opto_2p_listener',''));
+            config.opto2pPort = str2double(strtrim(app.getIniValue(iniData,'network','opto_2p_port','')));
         end
 
         function machineName = getMachineName(app)
@@ -287,6 +289,236 @@ classdef bvGUI < matlab.apps.AppBase
 
             if ~(isDrivePath || isUncPath || isUnixPath)
                 resolvedPath = fullfile(repoRoot, configuredPath);
+            end
+        end
+
+        function completeStimSeq = buildCompleteStimSeq(app)
+            global bvData;
+
+            completeStimSeq = [];
+            seqReps = str2num(app.SequenceRepeatsEditField.Value); %#ok<ST2NM>
+
+            for iSeqRep = 1:seqReps
+                singleRepSeq = [];
+                for iStim = 1:length(bvData.expData.stims)
+                    stimReps = bvData.expData.stims(iStim).reps;
+                    singleRepSeq = [singleRepSeq,repmat(iStim,[1 stimReps])]; %#ok<AGROW>
+                end
+                if app.RandomiseCheckBox.Value == true
+                    completeStimSeq = [completeStimSeq,singleRepSeq(randperm(length(singleRepSeq)))]; %#ok<AGROW>
+                else
+                    completeStimSeq = [completeStimSeq,singleRepSeq]; %#ok<AGROW>
+                end
+            end
+        end
+
+        function [prepData, errMsg] = collectOpto2pPrepData(app, expDataEval, completeStimSeq)
+            prepData = struct('enabled', false, 'schemaName', '', 'seqNums', []);
+            errMsg = '';
+            schemaName = '';
+            seqNums = [];
+
+            for iTrial = 1:length(completeStimSeq)
+                stimIdx = completeStimSeq(iTrial);
+                for iFeature = 1:length(expDataEval(stimIdx).features)
+                    feature = expDataEval(stimIdx).features(iFeature);
+                    if ~strcmp(feature.name{1},'opto_2p')
+                        continue;
+                    end
+
+                    featureParams = cell2struct(feature.vals',feature.params);
+                    if isfield(featureParams,'enable') && ~strcmp(strtrim(featureParams.enable),'1')
+                        continue;
+                    end
+
+                    if ~isfield(featureParams,'schema_name') || isempty(strtrim(featureParams.schema_name))
+                        errMsg = ['Missing schema_name in opto_2p feature for stimulus ',num2str(stimIdx)];
+                        return;
+                    end
+                    if ~isfield(featureParams,'seq_number') || isempty(strtrim(featureParams.seq_number))
+                        errMsg = ['Missing seq_number in opto_2p feature for stimulus ',num2str(stimIdx)];
+                        return;
+                    end
+
+                    currentSchemaName = strtrim(featureParams.schema_name);
+                    if isempty(schemaName)
+                        schemaName = currentSchemaName;
+                    elseif ~strcmp(schemaName,currentSchemaName)
+                        errMsg = ['Conflicting opto_2p schema_name values: ',schemaName,' vs ',currentSchemaName];
+                        return;
+                    end
+
+                    seqNum = str2double(featureParams.seq_number);
+                    if isnan(seqNum) || ~isfinite(seqNum) || seqNum ~= floor(seqNum)
+                        errMsg = ['Invalid opto_2p seq_number: ',featureParams.seq_number];
+                        return;
+                    end
+
+                    if ~ismember(seqNum,seqNums)
+                        seqNums(end+1) = seqNum; %#ok<AGROW>
+                    end
+                end
+            end
+
+            if isempty(seqNums)
+                return;
+            end
+
+            prepData.enabled = true;
+            prepData.schemaName = schemaName;
+            prepData.seqNums = seqNums;
+        end
+
+        function [success, errMsg] = runOpto2pPrep(app, config, expID, prepData)
+            success = true;
+            errMsg = '';
+
+            if ~prepData.enabled
+                return;
+            end
+
+            if isempty(config.opto2pListener)
+                success = false;
+                errMsg = ['Opto_2p is not available on machine ',config.machineName,': network.opto_2p_listener is not configured.'];
+                return;
+            end
+            if isnan(config.opto2pPort) || ~isfinite(config.opto2pPort) || config.opto2pPort <= 0
+                success = false;
+                errMsg = ['Opto_2p is not available on machine ',config.machineName,': network.opto_2p_port is not configured.'];
+                return;
+            end
+
+            app.debugMessage('Computing masks');
+
+            udpSocket = [];
+            timeoutPeriod = 600;
+            try
+                udpSocket = udp(config.opto2pListener, config.opto2pPort);
+                udpSocket.Timeout = timeoutPeriod;
+                fopen(udpSocket);
+                udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
+
+                for iSeq = 1:length(prepData.seqNums)
+                    seqNum = prepData.seqNums(iSeq);
+                    payload = struct( ...
+                        'action', 'prep_patterns', ...
+                        'schema_name', prepData.schemaName, ...
+                        'expID', expID, ...
+                        'seq_num', seqNum);
+                    jsonPayload = jsonencode(payload);
+                    app.debugMessage(['Preparing opto_2p masks for seq_num ',num2str(seqNum),' via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
+                    fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+
+                    startTime = tic;
+                    while udpSocket.BytesAvailable == 0
+                        if toc(startTime) > timeoutPeriod
+                            success = false;
+                            errMsg = ['Timed out waiting for opto_2p confirmation for seq_num ',num2str(seqNum)];
+                            return;
+                        end
+                        drawnow limitrate;
+                        pause(0.1);
+                    end
+
+                    response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
+                    responseText = native2unicode(uint8(response)','UTF-8');
+
+                    try
+                        reply = jsondecode(responseText);
+                    catch
+                        success = false;
+                        errMsg = ['Invalid opto_2p JSON reply for seq_num ',num2str(seqNum),': ',responseText];
+                        return;
+                    end
+
+                    if ~isfield(reply,'action') || ~strcmp(reply.action,'prep_patterns')
+                        success = false;
+                        errMsg = ['Unexpected opto_2p action for seq_num ',num2str(seqNum)];
+                        return;
+                    end
+                    if ~isfield(reply,'schema_name') || ~strcmp(char(string(reply.schema_name)),prepData.schemaName)
+                        success = false;
+                        errMsg = ['Schema mismatch in opto_2p reply for seq_num ',num2str(seqNum)];
+                        return;
+                    end
+                    if ~isfield(reply,'expID') || ~strcmp(char(string(reply.expID)),expID)
+                        success = false;
+                        errMsg = ['expID mismatch in opto_2p reply for seq_num ',num2str(seqNum)];
+                        return;
+                    end
+                    if ~isfield(reply,'seq_num')
+                        success = false;
+                        errMsg = ['Missing seq_num in opto_2p reply for seq_num ',num2str(seqNum)];
+                        return;
+                    end
+                    replySeqNum = str2double(char(string(reply.seq_num)));
+                    if isnan(replySeqNum) || replySeqNum ~= seqNum
+                        success = false;
+                        errMsg = ['seq_num mismatch in opto_2p reply for seq_num ',num2str(seqNum)];
+                        return;
+                    end
+                    if ~isfield(reply,'status')
+                        success = false;
+                        errMsg = ['Missing status in opto_2p reply for seq_num ',num2str(seqNum)];
+                        return;
+                    end
+
+                    replyStatus = char(string(reply.status));
+                    if strcmp(replyStatus,'error')
+                        replyError = 'Unknown opto_2p error';
+                        if isfield(reply,'error')
+                            replyError = char(string(reply.error));
+                        end
+                        success = false;
+                        errMsg = ['Opto_2p error for seq_num ',num2str(seqNum),': ',replyError];
+                        return;
+                    end
+                    if ~strcmp(replyStatus,'ready')
+                        success = false;
+                        errMsg = ['Unexpected opto_2p status for seq_num ',num2str(seqNum),': ',replyStatus];
+                        return;
+                    end
+
+                    sequenceName = '';
+                    if isfield(reply,'sequence_name')
+                        sequenceName = char(string(reply.sequence_name));
+                    end
+                    patternSummary = '';
+                    if isfield(reply,'pattern_names')
+                        patternNames = cellstr(string(reply.pattern_names));
+                        patternSummary = strjoin(patternNames,', ');
+                    end
+
+                    if isempty(patternSummary)
+                        app.debugMessage(['Opto_2p ready for seq_num ',num2str(seqNum),' (',sequenceName,')']);
+                    else
+                        app.debugMessage(['Opto_2p ready for seq_num ',num2str(seqNum),' (',sequenceName,'): ',patternSummary]);
+                    end
+                end
+            catch err
+                success = false;
+                errMsg = ['Opto_2p prep failed: ',err.message];
+            end
+        end
+
+        function restoreRunButton(app)
+            app.RunButton.Enable = "on";
+            app.RunButton.Text = 'Run';
+            app.RunButton.BackgroundColor = 'g';
+            app.abortFlag = 0;
+        end
+
+        function cleanupUdpSocket(app, udpSocket)
+            if isempty(udpSocket)
+                return;
+            end
+            try
+                fclose(udpSocket);
+            catch
+            end
+            try
+                delete(udpSocket);
+            catch
             end
         end
 
@@ -705,15 +937,19 @@ classdef bvGUI < matlab.apps.AppBase
                 app.debugMessage('Make data folder command succeeded.');
             elseif response == -1
                 app.debugMessage('Make data folder command  failed.');
+                app.restoreRunButton();
                 return;
             else
-                app.debugMessage(['Unexpected server response: ', responseStr]);
+                app.debugMessage('Unexpected server response while creating data folder.');
+                app.restoreRunButton();
                 return;
             end         
             % clear the log box
             % prompt for basic experiment comment
             inp_text = inputdlg('Experiment type?','',1,{bvData.stim_filename});
             app.ExperimentlogTextArea.Value = {datestr(datetime),expID,inp_text{1},''};
+
+            completeStimSeq = app.buildCompleteStimSeq();
             % make sure bonvision server is in idle state 158.109.215.49
             try
               u = OscTcp(bv_address, 4002);
@@ -752,14 +988,54 @@ classdef bvGUI < matlab.apps.AppBase
             catch
               % bonvision server probably not in use
               app.debugMessage('Problem clearing Bonvision')
-              % put run button back to default state
-              app.RunButton.Enable = "on";
-              app.RunButton.Text = 'Run';
-              app.RunButton.BackgroundColor = 'g';
-              app.abortFlag = 0;
+              app.restoreRunButton();
               debugMessage(app,['Experiment complete with error - ',expID]);
               app.debugMessage('Check Bonvision server is running')
               return;
+            end
+
+            % convert all variable stim params to their values defined in the gui
+            allVars = app.VariablesEditField.Value;
+            allVars = strsplit(allVars,';');
+            varStruc = [];
+            for iVar = 1:length(allVars)
+                allVars{iVar} = strrep(allVars{iVar},' ','');
+                if ~isempty(allVars{iVar})
+                    eval(['varStruc.',allVars{iVar}]);
+                end
+            end
+
+            expDataEval = bvData.expData.stims;
+            for iStim = 1:length(expDataEval)
+                for iFeature = 1:length(expDataEval(iStim).features)
+                    featureParamsCell = expDataEval(iStim).features(iFeature).params;
+                    featureParams = cell2struct(expDataEval(iStim).features(iFeature).vals',expDataEval(iStim).features(iFeature).params);
+                    for iParam = 1:length(featureParamsCell)
+                        if isfield(varStruc,featureParams.(featureParamsCell{iParam}))
+                            variableVal = varStruc.(featureParams.(featureParamsCell{iParam}));
+                            if ~isstring(variableVal)
+                                variableVal = num2str(variableVal);
+                            end
+                            expDataEval(iStim).features(iFeature).vals{iParam} = variableVal;
+                        end
+                    end
+                end
+            end
+
+            [opto2pPrep, opto2pErr] = app.collectOpto2pPrepData(expDataEval, completeStimSeq);
+            if ~isempty(opto2pErr)
+                app.debugMessage(['Opto_2p prep error: ', opto2pErr]);
+                app.restoreRunButton();
+                return;
+            end
+
+            if opto2pPrep.enabled
+                [success, opto2pErr] = app.runOpto2pPrep(config, expID, opto2pPrep);
+                if ~success
+                    app.debugMessage(opto2pErr);
+                    app.restoreRunButton();
+                    return;
+                end
             end
             % initiate any DAQ devices which have been selected
             daqList = dir(fullfile(config.daqStartDir,'*.m'));
@@ -798,11 +1074,7 @@ classdef bvGUI < matlab.apps.AppBase
                         end
                         cd(startDir);
                         % restore GUI elements so ready to start again
-                        % put run button back to default state
-                        app.RunButton.Enable = "on";
-                        app.RunButton.Text = 'Run';
-                        app.RunButton.BackgroundColor = 'g';
-                        app.abortFlag = 0;
+                        app.restoreRunButton();
                         debugMessage(app,'Experiment complete (with errors!)');
                         inp_text = inputdlg('Final comments?');
                         if strcmp(app.ExperimentlogTextArea.Value{end},'')
@@ -841,26 +1113,6 @@ classdef bvGUI < matlab.apps.AppBase
                     else
                         % app.debugMessage('OK');
                     end
-                end
-            end
-
-            % make stim order with correct ratio of repeats for each stim
-            % type & randomisation / pseudorandom / pooled pseudorandom as
-            % requested by user
-            completeStimSeq = [];
-
-            seqReps = str2num(app.SequenceRepeatsEditField.Value);
-
-            for iSeqRep = 1:seqReps
-                singleRepSeq = [];
-                for iStim = 1:length(bvData.expData.stims)
-                    stimReps = bvData.expData.stims(iStim).reps;
-                    singleRepSeq = [singleRepSeq,repmat(iStim,[1 stimReps])];
-                end
-                if app.RandomiseCheckBox.Value == true
-                    completeStimSeq = [completeStimSeq,singleRepSeq(randperm(length(singleRepSeq)))];
-                else
-                    completeStimSeq = [completeStimSeq,singleRepSeq];
                 end
             end
 
@@ -914,40 +1166,6 @@ classdef bvGUI < matlab.apps.AppBase
                     % wait
                     drawnow limitrate;
                 end
-                % pull stim variables out of the gui text box
-                allVars = app.VariablesEditField.Value;
-                % put each var into a struct
-                allVars = strsplit(allVars,';');
-                varStruc = [];
-                for iVar = 1:length(allVars)
-                    allVars{iVar} = strrep(allVars{iVar},' ','');
-                    if ~isempty(allVars{iVar})
-                        eval(['varStruc.',allVars{iVar}]);
-                    end
-                end
-
-                % convert all variable stim params to their values defined in the gui:
-                expDataEval = bvData.expData.stims;
-                for iStim = 1:length(expDataEval)
-                    for iFeature = 1:length(expDataEval(iStim).features)
-                        featureParamsCell = expDataEval(iStim).features(iFeature).params;
-                        featureParams = cell2struct(expDataEval(iStim).features(iFeature).vals',expDataEval(iStim).features(iFeature).params);
-                        % cycle through feature params checking if they have been set
-                        % using a variable
-                        for iParam = 1:length(featureParamsCell)
-                            if isfield(varStruc,featureParams.(featureParamsCell{iParam}))
-                                % then it is a variable
-                                variableVal = varStruc.(featureParams.(featureParamsCell{iParam}));
-                                % convert to string if needed
-                                if ~isstring(variableVal)
-                                    variableVal = num2str(variableVal);
-                                end
-                                expDataEval(iStim).features(iFeature).vals{iParam} = variableVal;
-                            end
-                        end
-                    end
-                end
-
 %                 % preload all video/image files
 %                 all_resources = [];
 %                 for iStim = 1:length(expDataEval)

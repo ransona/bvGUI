@@ -1,4 +1,4 @@
-function [success,msg] = daq02_SI_start(expID)
+function [success,msg] = daq03_SI2_start(expID)
 % code to start acquisition
 % config for contacting SI UDP listener
 try
@@ -6,8 +6,8 @@ try
     expID = '2016-10-14_09_CFAP049';
   end
   SI_ip = '158.109.209.18';
-  SI_receive_port = 1813;
-  SI_send_port = 1814;
+  SI_receive_port = 1821;
+  SI_send_port = 1822;
   disp('starting SI');
   address = java.net.InetAddress.getLocalHost;
   IPaddress = char(address.getHostAddress);
