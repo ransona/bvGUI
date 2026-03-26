@@ -816,6 +816,15 @@ classdef bvGUI < matlab.apps.AppBase
             app.abortFlag = 0;
         end
 
+        function requestRunAbort(app, messageText)
+            app.abortFlag = 1;
+            app.RunButton.Text = 'Aborting...';
+            app.RunButton.Enable = "off";
+            if nargin > 1 && ~isempty(messageText)
+                app.debugMessage(messageText);
+            end
+        end
+
         function cleanupUdpSocket(app, udpSocket)
             if isempty(udpSocket)
                 return;
@@ -1497,17 +1506,15 @@ classdef bvGUI < matlab.apps.AppBase
                     iStim = completeStimSeq(iTrial);
                     [trialOpto2pData, trialOpto2pErr] = app.collectTrialOpto2pData(expDataEval, iStim);
                     if ~isempty(trialOpto2pErr)
-                        app.debugMessage(['Opto_2p trigger error: ', trialOpto2pErr]);
-                        app.restoreRunButton();
-                        return;
+                        app.requestRunAbort(['Opto_2p trigger error: ', trialOpto2pErr]);
+                        break;
                     end
 
                     if trialOpto2pData.enabled
                         [success, trialOpto2pErr] = app.triggerOpto2pForTrial(config, expID, trialOpto2pData);
                         if ~success
-                            app.debugMessage(trialOpto2pErr);
-                            app.restoreRunButton();
-                            return;
+                            app.requestRunAbort(trialOpto2pErr);
+                            break;
                         end
                     end
 
