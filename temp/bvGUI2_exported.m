@@ -1827,11 +1827,9 @@ classdef bvGUI < matlab.apps.AppBase
 
             cd(startDir);
 
-            if app.abortFlag
-                [success, abortPhotoStimErr] = app.abortOpto2p(config);
-                if ~success
-                    app.debugMessage(abortPhotoStimErr);
-                end
+            [success, abortPhotoStimErr] = app.abortOpto2p(config);
+            if ~success
+                app.debugMessage(abortPhotoStimErr);
             end
 
             debugMessage(app,['Experiment complete - ',expID]);
