@@ -728,6 +728,87 @@ classdef bvGUI < matlab.apps.AppBase
             end
         end
 
+        function [success, errMsg] = abortOpto2p(app, config)
+            success = true;
+            errMsg = '';
+
+            if isempty(config.opto2pListener)
+                return;
+            end
+            if isnan(config.opto2pPort) || ~isfinite(config.opto2pPort) || config.opto2pPort <= 0
+                return;
+            end
+
+            udpSocket = [];
+            timeoutPeriod = 600;
+
+            try
+                udpSocket = udp(config.opto2pListener, config.opto2pPort);
+                udpSocket.Timeout = timeoutPeriod;
+                fopen(udpSocket);
+                udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
+
+                payload = struct('action', 'abort_photo_stim');
+                jsonPayload = jsonencode(payload);
+                app.debugMessage(['Sending abort_photo_stim via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
+                fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+
+                startTime = tic;
+                while udpSocket.BytesAvailable == 0
+                    if toc(startTime) > timeoutPeriod
+                        success = false;
+                        errMsg = 'Timed out waiting for abort_photo_stim confirmation.';
+                        return;
+                    end
+                    drawnow limitrate;
+                    pause(0.1);
+                end
+
+                response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
+                responseText = native2unicode(uint8(response)','UTF-8');
+
+                try
+                    reply = jsondecode(responseText);
+                catch
+                    success = false;
+                    errMsg = ['Invalid abort_photo_stim JSON reply: ',responseText];
+                    return;
+                end
+
+                if ~isfield(reply,'action') || ~strcmp(reply.action,'abort_photo_stim')
+                    success = false;
+                    errMsg = 'Unexpected abort_photo_stim action in reply.';
+                    return;
+                end
+                if ~isfield(reply,'status')
+                    success = false;
+                    errMsg = 'Missing status in abort_photo_stim reply.';
+                    return;
+                end
+
+                replyStatus = char(string(reply.status));
+                if strcmp(replyStatus,'error')
+                    replyError = 'Unknown abort_photo_stim error';
+                    if isfield(reply,'error')
+                        replyError = char(string(reply.error));
+                    end
+                    success = false;
+                    errMsg = ['abort_photo_stim error: ',replyError];
+                    return;
+                end
+                if ~strcmp(replyStatus,'ready')
+                    success = false;
+                    errMsg = ['Unexpected abort_photo_stim status: ',replyStatus];
+                    return;
+                end
+
+                app.debugMessage('abort_photo_stim acknowledged.');
+            catch err
+                success = false;
+                errMsg = ['abort_photo_stim failed: ',err.message];
+            end
+        end
+
         function restoreRunButton(app)
             app.RunButton.Enable = "on";
             app.RunButton.Text = 'Run';
@@ -1745,6 +1826,13 @@ classdef bvGUI < matlab.apps.AppBase
             end
 
             cd(startDir);
+
+            if app.abortFlag
+                [success, abortPhotoStimErr] = app.abortOpto2p(config);
+                if ~success
+                    app.debugMessage(abortPhotoStimErr);
+                end
+            end
 
             debugMessage(app,['Experiment complete - ',expID]);
             inp_text = inputdlg('Final comments?');
