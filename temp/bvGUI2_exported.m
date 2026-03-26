@@ -369,6 +369,63 @@ classdef bvGUI < matlab.apps.AppBase
             prepData.seqNums = seqNums;
         end
 
+        function [trialData, errMsg] = collectTrialOpto2pData(app, expDataEval, stimIdx)
+            trialData = struct('enabled', false, 'schemaName', '', 'seqNum', []);
+            errMsg = '';
+            schemaName = '';
+            seqNum = [];
+
+            for iFeature = 1:length(expDataEval(stimIdx).features)
+                feature = expDataEval(stimIdx).features(iFeature);
+                if ~strcmp(feature.name{1},'opto_2p')
+                    continue;
+                end
+
+                featureParams = cell2struct(feature.vals',feature.params);
+                if isfield(featureParams,'enable') && ~strcmp(strtrim(featureParams.enable),'1')
+                    continue;
+                end
+
+                if ~isfield(featureParams,'schema_name') || isempty(strtrim(featureParams.schema_name))
+                    errMsg = ['Missing schema_name in opto_2p feature for stimulus ',num2str(stimIdx)];
+                    return;
+                end
+                if ~isfield(featureParams,'seq_number') || isempty(strtrim(featureParams.seq_number))
+                    errMsg = ['Missing seq_number in opto_2p feature for stimulus ',num2str(stimIdx)];
+                    return;
+                end
+
+                currentSchemaName = strtrim(featureParams.schema_name);
+                currentSeqNum = str2double(featureParams.seq_number);
+                if isnan(currentSeqNum) || ~isfinite(currentSeqNum) || currentSeqNum ~= floor(currentSeqNum)
+                    errMsg = ['Invalid opto_2p seq_number: ',featureParams.seq_number];
+                    return;
+                end
+
+                if isempty(schemaName)
+                    schemaName = currentSchemaName;
+                elseif ~strcmp(schemaName,currentSchemaName)
+                    errMsg = ['Conflicting opto_2p schema_name values within stimulus ',num2str(stimIdx)];
+                    return;
+                end
+
+                if isempty(seqNum)
+                    seqNum = currentSeqNum;
+                elseif seqNum ~= currentSeqNum
+                    errMsg = ['Conflicting opto_2p seq_number values within stimulus ',num2str(stimIdx)];
+                    return;
+                end
+            end
+
+            if isempty(seqNum)
+                return;
+            end
+
+            trialData.enabled = true;
+            trialData.schemaName = schemaName;
+            trialData.seqNum = seqNum;
+        end
+
         function [success, errMsg] = runOpto2pPrep(app, config, expID, prepData)
             success = true;
             errMsg = '';
@@ -489,15 +546,185 @@ classdef bvGUI < matlab.apps.AppBase
                         patternSummary = strjoin(patternNames,', ');
                     end
 
+                    preparedSeqNumsSummary = '';
+                    if isfield(reply,'prepared_seq_nums')
+                        preparedSeqNumsSummary = strjoin(cellstr(string(reply.prepared_seq_nums)),', ');
+                    end
+
+                    preparedSequenceNamesSummary = '';
+                    if isfield(reply,'prepared_sequence_names')
+                        preparedSequenceNamesSummary = strjoin(cellstr(string(reply.prepared_sequence_names)),', ');
+                    end
+
+                    stimulusGroupSummary = '';
+                    if isfield(reply,'stimulus_groups')
+                        stimulusGroups = reply.stimulus_groups;
+                        if isstruct(stimulusGroups)
+                            if numel(stimulusGroups) == 1
+                                stimulusGroups = stimulusGroups(:);
+                            end
+                            groupParts = cell(1,numel(stimulusGroups));
+                            for iGroup = 1:numel(stimulusGroups)
+                                groupNum = '';
+                                patternName = '';
+                                if isfield(stimulusGroups(iGroup),'stimulus_group_num')
+                                    groupNum = char(string(stimulusGroups(iGroup).stimulus_group_num));
+                                end
+                                if isfield(stimulusGroups(iGroup),'pattern_name')
+                                    patternName = char(string(stimulusGroups(iGroup).pattern_name));
+                                end
+                                groupParts{iGroup} = ['G',groupNum,'=',patternName];
+                            end
+                            stimulusGroupSummary = strjoin(groupParts,', ');
+                        end
+                    end
+
                     if isempty(patternSummary)
                         app.debugMessage(['Opto_2p ready for seq_num ',num2str(seqNum),' (',sequenceName,')']);
                     else
                         app.debugMessage(['Opto_2p ready for seq_num ',num2str(seqNum),' (',sequenceName,'): ',patternSummary]);
                     end
+                    if ~isempty(preparedSeqNumsSummary)
+                        app.debugMessage(['Prepared seq_nums: ',preparedSeqNumsSummary]);
+                    end
+                    if ~isempty(preparedSequenceNamesSummary)
+                        app.debugMessage(['Prepared sequences: ',preparedSequenceNamesSummary]);
+                    end
+                    if ~isempty(stimulusGroupSummary)
+                        app.debugMessage(['Prepared stimulus groups: ',stimulusGroupSummary]);
+                    end
                 end
             catch err
                 success = false;
                 errMsg = ['Opto_2p prep failed: ',err.message];
+            end
+        end
+
+        function [success, errMsg] = triggerOpto2pForTrial(app, config, expID, trialData)
+            success = true;
+            errMsg = '';
+
+            if ~trialData.enabled
+                return;
+            end
+
+            if isempty(config.opto2pListener)
+                success = false;
+                errMsg = ['Opto_2p is not available on machine ',config.machineName,': network.opto_2p_listener is not configured.'];
+                return;
+            end
+            if isnan(config.opto2pPort) || ~isfinite(config.opto2pPort) || config.opto2pPort <= 0
+                success = false;
+                errMsg = ['Opto_2p is not available on machine ',config.machineName,': network.opto_2p_port is not configured.'];
+                return;
+            end
+
+            udpSocket = [];
+            timeoutPeriod = 600;
+
+            try
+                udpSocket = udp(config.opto2pListener, config.opto2pPort);
+                udpSocket.Timeout = timeoutPeriod;
+                fopen(udpSocket);
+                udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
+
+                payload = struct( ...
+                    'action', 'trigger_photo_stim', ...
+                    'schema_name', trialData.schemaName, ...
+                    'expID', expID, ...
+                    'seq_num', trialData.seqNum);
+                jsonPayload = jsonencode(payload);
+                app.debugMessage(['Triggering opto_2p for seq_num ',num2str(trialData.seqNum),' via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
+                fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+
+                startTime = tic;
+                while udpSocket.BytesAvailable == 0
+                    if toc(startTime) > timeoutPeriod
+                        success = false;
+                        errMsg = ['Timed out waiting for opto_2p trigger confirmation for seq_num ',num2str(trialData.seqNum)];
+                        return;
+                    end
+                    drawnow limitrate;
+                    pause(0.1);
+                end
+
+                response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
+                responseText = native2unicode(uint8(response)','UTF-8');
+
+                try
+                    reply = jsondecode(responseText);
+                catch
+                    success = false;
+                    errMsg = ['Invalid opto_2p trigger JSON reply for seq_num ',num2str(trialData.seqNum),': ',responseText];
+                    return;
+                end
+
+                if ~isfield(reply,'action') || ~strcmp(reply.action,'trigger_photo_stim')
+                    success = false;
+                    errMsg = ['Unexpected opto_2p trigger action for seq_num ',num2str(trialData.seqNum)];
+                    return;
+                end
+                if ~isfield(reply,'schema_name') || ~strcmp(char(string(reply.schema_name)),trialData.schemaName)
+                    success = false;
+                    errMsg = ['Schema mismatch in opto_2p trigger reply for seq_num ',num2str(trialData.seqNum)];
+                    return;
+                end
+                if ~isfield(reply,'expID') || ~strcmp(char(string(reply.expID)),expID)
+                    success = false;
+                    errMsg = ['expID mismatch in opto_2p trigger reply for seq_num ',num2str(trialData.seqNum)];
+                    return;
+                end
+                if ~isfield(reply,'seq_num')
+                    success = false;
+                    errMsg = ['Missing seq_num in opto_2p trigger reply for seq_num ',num2str(trialData.seqNum)];
+                    return;
+                end
+
+                replySeqNum = str2double(char(string(reply.seq_num)));
+                if isnan(replySeqNum) || replySeqNum ~= trialData.seqNum
+                    success = false;
+                    errMsg = ['seq_num mismatch in opto_2p trigger reply for seq_num ',num2str(trialData.seqNum)];
+                    return;
+                end
+                if ~isfield(reply,'status')
+                    success = false;
+                    errMsg = ['Missing status in opto_2p trigger reply for seq_num ',num2str(trialData.seqNum)];
+                    return;
+                end
+
+                replyStatus = char(string(reply.status));
+                if strcmp(replyStatus,'error')
+                    replyError = 'Unknown opto_2p trigger error';
+                    if isfield(reply,'error')
+                        replyError = char(string(reply.error));
+                    end
+                    success = false;
+                    errMsg = ['Opto_2p trigger error for seq_num ',num2str(trialData.seqNum),': ',replyError];
+                    return;
+                end
+                if ~strcmp(replyStatus,'ready')
+                    success = false;
+                    errMsg = ['Unexpected opto_2p trigger status for seq_num ',num2str(trialData.seqNum),': ',replyStatus];
+                    return;
+                end
+
+                sequenceName = '';
+                if isfield(reply,'sequence_name')
+                    sequenceName = char(string(reply.sequence_name));
+                end
+                stimulusGroupsSummary = '';
+                if isfield(reply,'stimulus_groups')
+                    stimulusGroupsSummary = strjoin(cellstr(string(reply.stimulus_groups)),', ');
+                end
+
+                if isempty(stimulusGroupsSummary)
+                    app.debugMessage(['Opto_2p trigger ready for seq_num ',num2str(trialData.seqNum),' (',sequenceName,')']);
+                else
+                    app.debugMessage(['Opto_2p trigger ready for seq_num ',num2str(trialData.seqNum),' (',sequenceName,'): ',stimulusGroupsSummary]);
+                end
+            catch err
+                success = false;
+                errMsg = ['Opto_2p trigger failed: ',err.message];
             end
         end
 
@@ -1186,6 +1413,23 @@ classdef bvGUI < matlab.apps.AppBase
                 % rig.experiment(metadata);
                 for iTrial = 1:length(completeStimSeq)
                     drawnow
+                    iStim = completeStimSeq(iTrial);
+                    [trialOpto2pData, trialOpto2pErr] = app.collectTrialOpto2pData(expDataEval, iStim);
+                    if ~isempty(trialOpto2pErr)
+                        app.debugMessage(['Opto_2p trigger error: ', trialOpto2pErr]);
+                        app.restoreRunButton();
+                        return;
+                    end
+
+                    if trialOpto2pData.enabled
+                        [success, trialOpto2pErr] = app.triggerOpto2pForTrial(config, expID, trialOpto2pData);
+                        if ~success
+                            app.debugMessage(trialOpto2pErr);
+                            app.restoreRunButton();
+                            return;
+                        end
+                    end
+
                     rig.clear();
                     rig.experiment(metadata);
                     debugMessage(app,['Starting trial ',num2str(iTrial),' of ',num2str(length(completeStimSeq))]);
@@ -1333,7 +1577,6 @@ classdef bvGUI < matlab.apps.AppBase
                     % preload resources
                     % preload all video/image files
                     all_resources = [];
-                    iStim = completeStimSeq(iTrial);
                     for iFeat = 1:length(expDataEval(iStim).features)
                       % check if feature is a movie and if so add it as a resource
                       if strcmp(expDataEval(iStim).features(iFeat).name{1},'movie')
