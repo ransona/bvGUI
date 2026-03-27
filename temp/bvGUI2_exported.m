@@ -320,43 +320,23 @@ classdef bvGUI < matlab.apps.AppBase
 
             for iTrial = 1:length(completeStimSeq)
                 stimIdx = completeStimSeq(iTrial);
-                for iFeature = 1:length(expDataEval(stimIdx).features)
-                    feature = expDataEval(stimIdx).features(iFeature);
-                    if ~strcmp(feature.name{1},'opto_2p')
-                        continue;
-                    end
+                [trialData, errMsg] = app.collectTrialOpto2pData(expDataEval, stimIdx);
+                if ~isempty(errMsg)
+                    return;
+                end
+                if ~trialData.enabled
+                    continue;
+                end
 
-                    featureParams = cell2struct(feature.vals',feature.params);
-                    if isfield(featureParams,'enable') && ~strcmp(strtrim(featureParams.enable),'1')
-                        continue;
-                    end
+                if isempty(schemaName)
+                    schemaName = trialData.schemaName;
+                elseif ~strcmp(schemaName,trialData.schemaName)
+                    errMsg = ['Conflicting opto_2p schema_name values: ',schemaName,' vs ',trialData.schemaName];
+                    return;
+                end
 
-                    if ~isfield(featureParams,'schema_name') || isempty(strtrim(featureParams.schema_name))
-                        errMsg = ['Missing schema_name in opto_2p feature for stimulus ',num2str(stimIdx)];
-                        return;
-                    end
-                    if ~isfield(featureParams,'seq_number') || isempty(strtrim(featureParams.seq_number))
-                        errMsg = ['Missing seq_number in opto_2p feature for stimulus ',num2str(stimIdx)];
-                        return;
-                    end
-
-                    currentSchemaName = strtrim(featureParams.schema_name);
-                    if isempty(schemaName)
-                        schemaName = currentSchemaName;
-                    elseif ~strcmp(schemaName,currentSchemaName)
-                        errMsg = ['Conflicting opto_2p schema_name values: ',schemaName,' vs ',currentSchemaName];
-                        return;
-                    end
-
-                    seqNum = str2double(featureParams.seq_number);
-                    if isnan(seqNum) || ~isfinite(seqNum) || seqNum ~= floor(seqNum)
-                        errMsg = ['Invalid opto_2p seq_number: ',featureParams.seq_number];
-                        return;
-                    end
-
-                    if ~ismember(seqNum,seqNums)
-                        seqNums(end+1) = seqNum; %#ok<AGROW>
-                    end
+                if ~ismember(trialData.seqNum,seqNums)
+                    seqNums(end+1) = trialData.seqNum; %#ok<AGROW>
                 end
             end
 
@@ -374,6 +354,7 @@ classdef bvGUI < matlab.apps.AppBase
             errMsg = '';
             schemaName = '';
             seqNum = [];
+            enabledOptoCount = 0;
 
             for iFeature = 1:length(expDataEval(stimIdx).features)
                 feature = expDataEval(stimIdx).features(iFeature);
@@ -384,6 +365,12 @@ classdef bvGUI < matlab.apps.AppBase
                 featureParams = cell2struct(feature.vals',feature.params);
                 if isfield(featureParams,'enable') && ~strcmp(strtrim(featureParams.enable),'1')
                     continue;
+                end
+
+                enabledOptoCount = enabledOptoCount + 1;
+                if enabledOptoCount > 1
+                    errMsg = ['Only one enabled opto_2p feature is allowed in stimulus ',num2str(stimIdx)];
+                    return;
                 end
 
                 if ~isfield(featureParams,'schema_name') || isempty(strtrim(featureParams.schema_name))
@@ -455,144 +442,126 @@ classdef bvGUI < matlab.apps.AppBase
                 fopen(udpSocket);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
-                for iSeq = 1:length(prepData.seqNums)
-                    seqNum = prepData.seqNums(iSeq);
-                    payload = struct( ...
-                        'action', 'prep_patterns', ...
-                        'schema_name', prepData.schemaName, ...
-                        'expID', expID, ...
-                        'seq_num', seqNum);
-                    jsonPayload = jsonencode(payload);
-                    app.debugMessage(['Preparing opto_2p masks for seq_num ',num2str(seqNum),' via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
-                    fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+                payload = struct( ...
+                    'action', 'prep_patterns', ...
+                    'schema_name', prepData.schemaName, ...
+                    'expID', expID, ...
+                    'seq_num', prepData.seqNums);
+                jsonPayload = jsonencode(payload);
+                seqNumSummary = strjoin(cellstr(string(prepData.seqNums)),', ');
+                app.debugMessage(['Preparing opto_2p masks for seq_nums [',seqNumSummary,'] via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
+                fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
 
-                    startTime = tic;
-                    while udpSocket.BytesAvailable == 0
-                        if toc(startTime) > timeoutPeriod
-                            success = false;
-                            errMsg = ['Timed out waiting for opto_2p confirmation for seq_num ',num2str(seqNum)];
-                            return;
+                startTime = tic;
+                while udpSocket.BytesAvailable == 0
+                    if toc(startTime) > timeoutPeriod
+                        success = false;
+                        errMsg = ['Timed out waiting for opto_2p confirmation for seq_nums [',seqNumSummary,']'];
+                        return;
+                    end
+                    drawnow limitrate;
+                    pause(0.1);
+                end
+
+                response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
+                responseText = native2unicode(uint8(response)','UTF-8');
+
+                try
+                    reply = jsondecode(responseText);
+                catch
+                    success = false;
+                    errMsg = ['Invalid opto_2p JSON reply for seq_nums [',seqNumSummary,']: ',responseText];
+                    return;
+                end
+
+                if ~isfield(reply,'action') || ~strcmp(reply.action,'prep_patterns')
+                    success = false;
+                    errMsg = 'Unexpected opto_2p prep action in reply.';
+                    return;
+                end
+                if ~isfield(reply,'schema_name') || ~strcmp(char(string(reply.schema_name)),prepData.schemaName)
+                    success = false;
+                    errMsg = 'Schema mismatch in opto_2p prep reply.';
+                    return;
+                end
+                if ~isfield(reply,'expID') || ~strcmp(char(string(reply.expID)),expID)
+                    success = false;
+                    errMsg = 'expID mismatch in opto_2p prep reply.';
+                    return;
+                end
+                if ~isfield(reply,'status')
+                    success = false;
+                    errMsg = 'Missing status in opto_2p prep reply.';
+                    return;
+                end
+
+                replyStatus = char(string(reply.status));
+                if strcmp(replyStatus,'error')
+                    replyError = 'Unknown opto_2p error';
+                    if isfield(reply,'error')
+                        replyError = char(string(reply.error));
+                    end
+                    success = false;
+                    errMsg = ['Opto_2p prep error: ',replyError];
+                    return;
+                end
+                if ~strcmp(replyStatus,'ready')
+                    success = false;
+                    errMsg = ['Unexpected opto_2p prep status: ',replyStatus];
+                    return;
+                end
+
+                preparedSeqNumsSummary = '';
+                if isfield(reply,'prepared_seq_nums')
+                    preparedSeqNumsSummary = strjoin(cellstr(string(reply.prepared_seq_nums)),', ');
+                end
+
+                preparedSequenceNamesSummary = '';
+                if isfield(reply,'prepared_sequence_names')
+                    preparedSequenceNamesSummary = strjoin(cellstr(string(reply.prepared_sequence_names)),', ');
+                end
+
+                patternSummary = '';
+                if isfield(reply,'pattern_names')
+                    patternNames = cellstr(string(reply.pattern_names));
+                    patternSummary = strjoin(patternNames,', ');
+                end
+
+                stimulusGroupSummary = '';
+                if isfield(reply,'stimulus_groups')
+                    stimulusGroups = reply.stimulus_groups;
+                    if isstruct(stimulusGroups)
+                        if numel(stimulusGroups) == 1
+                            stimulusGroups = stimulusGroups(:);
                         end
-                        drawnow limitrate;
-                        pause(0.1);
-                    end
-
-                    response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
-                    responseText = native2unicode(uint8(response)','UTF-8');
-
-                    try
-                        reply = jsondecode(responseText);
-                    catch
-                        success = false;
-                        errMsg = ['Invalid opto_2p JSON reply for seq_num ',num2str(seqNum),': ',responseText];
-                        return;
-                    end
-
-                    if ~isfield(reply,'action') || ~strcmp(reply.action,'prep_patterns')
-                        success = false;
-                        errMsg = ['Unexpected opto_2p action for seq_num ',num2str(seqNum)];
-                        return;
-                    end
-                    if ~isfield(reply,'schema_name') || ~strcmp(char(string(reply.schema_name)),prepData.schemaName)
-                        success = false;
-                        errMsg = ['Schema mismatch in opto_2p reply for seq_num ',num2str(seqNum)];
-                        return;
-                    end
-                    if ~isfield(reply,'expID') || ~strcmp(char(string(reply.expID)),expID)
-                        success = false;
-                        errMsg = ['expID mismatch in opto_2p reply for seq_num ',num2str(seqNum)];
-                        return;
-                    end
-                    if ~isfield(reply,'seq_num')
-                        success = false;
-                        errMsg = ['Missing seq_num in opto_2p reply for seq_num ',num2str(seqNum)];
-                        return;
-                    end
-                    replySeqNum = str2double(char(string(reply.seq_num)));
-                    if isnan(replySeqNum) || replySeqNum ~= seqNum
-                        success = false;
-                        errMsg = ['seq_num mismatch in opto_2p reply for seq_num ',num2str(seqNum)];
-                        return;
-                    end
-                    if ~isfield(reply,'status')
-                        success = false;
-                        errMsg = ['Missing status in opto_2p reply for seq_num ',num2str(seqNum)];
-                        return;
-                    end
-
-                    replyStatus = char(string(reply.status));
-                    if strcmp(replyStatus,'error')
-                        replyError = 'Unknown opto_2p error';
-                        if isfield(reply,'error')
-                            replyError = char(string(reply.error));
-                        end
-                        success = false;
-                        errMsg = ['Opto_2p error for seq_num ',num2str(seqNum),': ',replyError];
-                        return;
-                    end
-                    if ~strcmp(replyStatus,'ready')
-                        success = false;
-                        errMsg = ['Unexpected opto_2p status for seq_num ',num2str(seqNum),': ',replyStatus];
-                        return;
-                    end
-
-                    sequenceName = '';
-                    if isfield(reply,'sequence_name')
-                        sequenceName = char(string(reply.sequence_name));
-                    end
-                    patternSummary = '';
-                    if isfield(reply,'pattern_names')
-                        patternNames = cellstr(string(reply.pattern_names));
-                        patternSummary = strjoin(patternNames,', ');
-                    end
-
-                    preparedSeqNumsSummary = '';
-                    if isfield(reply,'prepared_seq_nums')
-                        preparedSeqNumsSummary = strjoin(cellstr(string(reply.prepared_seq_nums)),', ');
-                    end
-
-                    preparedSequenceNamesSummary = '';
-                    if isfield(reply,'prepared_sequence_names')
-                        preparedSequenceNamesSummary = strjoin(cellstr(string(reply.prepared_sequence_names)),', ');
-                    end
-
-                    stimulusGroupSummary = '';
-                    if isfield(reply,'stimulus_groups')
-                        stimulusGroups = reply.stimulus_groups;
-                        if isstruct(stimulusGroups)
-                            if numel(stimulusGroups) == 1
-                                stimulusGroups = stimulusGroups(:);
+                        groupParts = cell(1,numel(stimulusGroups));
+                        for iGroup = 1:numel(stimulusGroups)
+                            groupNum = '';
+                            patternName = '';
+                            if isfield(stimulusGroups(iGroup),'stimulus_group_num')
+                                groupNum = char(string(stimulusGroups(iGroup).stimulus_group_num));
                             end
-                            groupParts = cell(1,numel(stimulusGroups));
-                            for iGroup = 1:numel(stimulusGroups)
-                                groupNum = '';
-                                patternName = '';
-                                if isfield(stimulusGroups(iGroup),'stimulus_group_num')
-                                    groupNum = char(string(stimulusGroups(iGroup).stimulus_group_num));
-                                end
-                                if isfield(stimulusGroups(iGroup),'pattern_name')
-                                    patternName = char(string(stimulusGroups(iGroup).pattern_name));
-                                end
-                                groupParts{iGroup} = ['G',groupNum,'=',patternName];
+                            if isfield(stimulusGroups(iGroup),'pattern_name')
+                                patternName = char(string(stimulusGroups(iGroup).pattern_name));
                             end
-                            stimulusGroupSummary = strjoin(groupParts,', ');
+                            groupParts{iGroup} = ['G',groupNum,'=',patternName];
                         end
+                        stimulusGroupSummary = strjoin(groupParts,', ');
                     end
+                end
 
-                    if isempty(patternSummary)
-                        app.debugMessage(['Opto_2p ready for seq_num ',num2str(seqNum),' (',sequenceName,')']);
-                    else
-                        app.debugMessage(['Opto_2p ready for seq_num ',num2str(seqNum),' (',sequenceName,'): ',patternSummary]);
-                    end
-                    if ~isempty(preparedSeqNumsSummary)
-                        app.debugMessage(['Prepared seq_nums: ',preparedSeqNumsSummary]);
-                    end
-                    if ~isempty(preparedSequenceNamesSummary)
-                        app.debugMessage(['Prepared sequences: ',preparedSequenceNamesSummary]);
-                    end
-                    if ~isempty(stimulusGroupSummary)
-                        app.debugMessage(['Prepared stimulus groups: ',stimulusGroupSummary]);
-                    end
+                app.debugMessage(['Opto_2p prep ready for schema ',prepData.schemaName,' and seq_nums [',seqNumSummary,']']);
+                if ~isempty(preparedSeqNumsSummary)
+                    app.debugMessage(['Prepared seq_nums: ',preparedSeqNumsSummary]);
+                end
+                if ~isempty(preparedSequenceNamesSummary)
+                    app.debugMessage(['Prepared sequences: ',preparedSequenceNamesSummary]);
+                end
+                if ~isempty(patternSummary)
+                    app.debugMessage(['Prepared patterns: ',patternSummary]);
+                end
+                if ~isempty(stimulusGroupSummary)
+                    app.debugMessage(['Prepared stimulus groups: ',stimulusGroupSummary]);
                 end
             catch err
                 success = false;
