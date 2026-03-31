@@ -2262,6 +2262,7 @@ classdef bvGUI < matlab.apps.AppBase
             end
 
             completeStimSeq = str2num(app.StimulusListBox.Value);
+            testAborted = false;
 
             if ~isempty(completeStimSeq)
                 % establish udp connection
@@ -2272,6 +2273,7 @@ classdef bvGUI < matlab.apps.AppBase
                 % fopen(u);
                 rig = Rig(u);
                 rig.dataset(savePath);
+                app.photoStimStarted = false;
 
                 debugMessage(app,['Testing stimulus ', num2str(completeStimSeq)]);
 
@@ -2324,10 +2326,45 @@ classdef bvGUI < matlab.apps.AppBase
                 end
                 rig.preload();
 
+                [opto2pPrep, opto2pErr] = app.collectOpto2pPrepData(expDataEval, completeStimSeq);
+                if ~isempty(opto2pErr)
+                    app.debugMessage(['Opto_2p prep error: ', opto2pErr]);
+                    rig.clear();
+                    rig.experiment('');
+                    app.TestStimBtn.Text = 'Test';
+                    app.TestStimBtn.BackgroundColor = 'g';
+                    return;
+                end
+                if opto2pPrep.enabled
+                    [success, opto2pErr] = app.runOpto2pPrep(config, expID, opto2pPrep);
+                    if ~success
+                        app.debugMessage(['Opto_2p prep error: ', opto2pErr]);
+                        rig.clear();
+                        rig.experiment('');
+                        app.TestStimBtn.Text = 'Test';
+                        app.TestStimBtn.BackgroundColor = 'g';
+                        return;
+                    end
+                end
+
                 % start loop of going through each trial (only 1 here)
                 for iTrial = 1:length(completeStimSeq)
                     drawnow
                     iStim = completeStimSeq(iTrial);
+                    [trialOpto2pData, trialOpto2pErr] = app.collectTrialOpto2pData(expDataEval, iStim);
+                    if ~isempty(trialOpto2pErr)
+                        app.debugMessage(['Opto_2p trigger error: ', trialOpto2pErr]);
+                        testAborted = true;
+                        break;
+                    end
+                    if trialOpto2pData.enabled
+                        [success, trialOpto2pErr] = app.triggerOpto2pForTrial(config, expID, trialOpto2pData);
+                        if ~success
+                            app.debugMessage(trialOpto2pErr);
+                            testAborted = true;
+                            break;
+                        end
+                    end
                     rig.experiment(metadata);
                     needsDefaultTriggerGrating = app.trialNeedsDefaultBonvisionTrigger(expDataEval, iStim);
                     % generate commands to send stim to BV server
@@ -2399,18 +2436,36 @@ classdef bvGUI < matlab.apps.AppBase
                         datagram = u.receive();
                         drawnow limitrate;
                     end
+                    if trialOpto2pData.enabled
+                        [success, trialOpto2pErr] = app.waitForOpto2pIdle(config);
+                        if ~success
+                            app.debugMessage(trialOpto2pErr);
+                            testAborted = true;
+                            break;
+                        end
+                    end
                 end
 
                 % Stop bonvision ouputting timing pulses
                 rig.clear();
                 rig.experiment('');
+                if app.photoStimStarted
+                    [success, abortPhotoStimErr] = app.abortOpto2p(config);
+                    if ~success
+                        app.debugMessage(abortPhotoStimErr);
+                    end
+                end
                 %u.delete;
             end
 
             % put run button back to default state
             app.TestStimBtn.Text = 'Test';
             app.TestStimBtn.BackgroundColor = 'g';
-            debugMessage(app,'Stimulus complete');
+            if testAborted
+                debugMessage(app,'Stimulus test aborted');
+            else
+                debugMessage(app,'Stimulus complete');
+            end
         end
 
         % Button pushed function: CopyButton
