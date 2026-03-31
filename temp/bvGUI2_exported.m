@@ -898,7 +898,16 @@ classdef bvGUI < matlab.apps.AppBase
                         return;
                     end
 
-                    pause(pollInterval);
+                    nextPollDelay = pollInterval;
+                    if isfield(reply,'expected_idle_after_s')
+                        expectedIdleAfter = str2double(char(string(reply.expected_idle_after_s)));
+                        if ~isnan(expectedIdleAfter) && isfinite(expectedIdleAfter) && expectedIdleAfter > 0
+                            nextPollDelay = expectedIdleAfter + 0.05;
+                            app.debugMessage(['Waiting for opto_2p to completed (expected in ',num2str(expectedIdleAfter),' secs)']);
+                        end
+                    end
+
+                    pause(nextPollDelay);
                 end
             catch err
                 success = false;
