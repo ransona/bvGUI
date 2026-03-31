@@ -414,6 +414,48 @@ classdef bvGUI < matlab.apps.AppBase
             trialData.seqNum = seqNum;
         end
 
+        function needsDefaultGrating = trialNeedsDefaultBonvisionTrigger(app, expDataEval, stimIdx)
+            needsDefaultGrating = false;
+            hasOpto2p = false;
+            hasBonvisionTriggerFeature = false;
+
+            for iFeature = 1:length(expDataEval(stimIdx).features)
+                feature = expDataEval(stimIdx).features(iFeature);
+                featureName = feature.name{1};
+
+                switch featureName
+                    case {'grating','movie','go_nogo'}
+                        hasBonvisionTriggerFeature = true;
+                    case 'opto_2p'
+                        featureParams = cell2struct(feature.vals',feature.params);
+                        if ~isfield(featureParams,'enable') || strcmp(strtrim(featureParams.enable),'1')
+                            hasOpto2p = true;
+                        end
+                end
+            end
+
+            needsDefaultGrating = hasOpto2p && ~hasBonvisionTriggerFeature;
+        end
+
+        function addDefaultBonvisionTriggerGrating(app, rig)
+            g = [];
+            g.angle = 0;
+            g.width = 1;
+            g.height = 1;
+            g.size = 1;
+            g.x = 0;
+            g.y = 0;
+            g.contrast = 0;
+            g.opacity = 1;
+            g.phase = 0;
+            g.freq = 0.01;
+            g.speed = 0;
+            g.dcycle = 1;
+            g.onset = 0;
+            g.duration = 0.1;
+            rig.gratings(g);
+        end
+
         function [success, errMsg] = runOpto2pPrep(app, config, expID, prepData)
             success = true;
             errMsg = '';
@@ -1641,6 +1683,7 @@ classdef bvGUI < matlab.apps.AppBase
                     go_nogo_trial.enable = false;
                     vr.enable = false;
                     vr.command = '';
+                    needsDefaultTriggerGrating = app.trialNeedsDefaultBonvisionTrigger(expDataEval, iStim);
 %                     % add synch square high
 %                     g = [];
 %                     g.angle = 0;
@@ -1777,6 +1820,10 @@ classdef bvGUI < matlab.apps.AppBase
                                 end
                         end
 
+                    end
+                    if needsDefaultTriggerGrating
+                        app.debugMessage('Added default zero-contrast grating for opto_2p-only trial');
+                        app.addDefaultBonvisionTriggerGrating(rig);
                     end
                     % once all features are added
                     % preload resources
@@ -2280,7 +2327,9 @@ classdef bvGUI < matlab.apps.AppBase
                 % start loop of going through each trial (only 1 here)
                 for iTrial = 1:length(completeStimSeq)
                     drawnow
+                    iStim = completeStimSeq(iTrial);
                     rig.experiment(metadata);
+                    needsDefaultTriggerGrating = app.trialNeedsDefaultBonvisionTrigger(expDataEval, iStim);
                     % generate commands to send stim to BV server
                     for iFeature = 1:length(bvData.expData.stims(completeStimSeq(iTrial)).features)
                         featureParamsCell = bvData.expData.stims(completeStimSeq(iTrial)).features(iFeature).params;
@@ -2336,6 +2385,10 @@ classdef bvGUI < matlab.apps.AppBase
                                 % add movie to rig
                                 rig.video(v);
                         end
+                    end
+                    if needsDefaultTriggerGrating
+                        app.debugMessage('Added default zero-contrast grating for opto_2p-only trial');
+                        app.addDefaultBonvisionTriggerGrating(rig);
                     end
                     % once all features are added
                     % start trial
