@@ -59,6 +59,7 @@ classdef bvGUI < matlab.apps.AppBase
 
     properties (Access = public)
         abortFlag = 0; % Whether you want to abort if stimulus run is ongoing
+        photoStimStarted = false; % Whether opto_2p photostimulation has been triggered in this run
     end
 
     methods (Access = private)
@@ -685,6 +686,7 @@ classdef bvGUI < matlab.apps.AppBase
                 else
                     app.debugMessage(['Opto_2p trigger ready for seq_num ',num2str(trialData.seqNum),' (',sequenceName,'): ',stimulusGroupsSummary]);
                 end
+                app.photoStimStarted = true;
             catch err
                 success = false;
                 errMsg = ['Opto_2p trigger failed: ',err.message];
@@ -694,6 +696,10 @@ classdef bvGUI < matlab.apps.AppBase
         function [success, errMsg] = abortOpto2p(app, config)
             success = true;
             errMsg = '';
+
+            if ~app.photoStimStarted
+                return;
+            end
 
             if isempty(config.opto2pListener)
                 return;
@@ -763,6 +769,7 @@ classdef bvGUI < matlab.apps.AppBase
                 end
 
                 app.debugMessage('abort_photo_stim acknowledged.');
+                app.photoStimStarted = false;
             catch err
                 success = false;
                 errMsg = ['abort_photo_stim failed: ',err.message];
@@ -880,6 +887,7 @@ classdef bvGUI < matlab.apps.AppBase
             app.RunButton.Text = 'Run';
             app.RunButton.BackgroundColor = 'g';
             app.abortFlag = 0;
+            app.photoStimStarted = false;
         end
 
         function requestRunAbort(app, messageText)
