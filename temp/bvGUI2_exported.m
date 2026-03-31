@@ -1916,7 +1916,10 @@ classdef bvGUI < matlab.apps.AppBase
                         % Access the string in the inner cell and concatenate
                         concatenatedString = [concatenatedString, datagram{i},' '];
                     end
-                    debugMessage(app,concatenatedString);
+                    concatenatedString = strtrim(concatenatedString);
+                    if ~strcmp(concatenatedString,'/end')
+                        debugMessage(app,concatenatedString);
+                    end
 
                     if trialOpto2pData.enabled && ~app.abortFlag
                         [success, trialOpto2pErr] = app.waitForOpto2pIdle(config);
