@@ -793,6 +793,7 @@ classdef bvGUI < matlab.apps.AppBase
             timeoutPeriod = 600;
             pollInterval = 0.25;
             startTime = tic;
+            app.debugMessage('Check photostimulation completed');
 
             try
                 udpSocket = udp(config.opto2pListener, config.opto2pPort);
