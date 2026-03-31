@@ -778,6 +778,114 @@ classdef bvGUI < matlab.apps.AppBase
             end
         end
 
+        function [success, errMsg] = waitForOpto2pIdle(app, config)
+            success = true;
+            errMsg = '';
+
+            if isempty(config.opto2pListener)
+                return;
+            end
+            if isnan(config.opto2pPort) || ~isfinite(config.opto2pPort) || config.opto2pPort <= 0
+                return;
+            end
+
+            udpSocket = [];
+            timeoutPeriod = 600;
+            pollInterval = 0.25;
+            startTime = tic;
+
+            try
+                udpSocket = udp(config.opto2pListener, config.opto2pPort);
+                udpSocket.Timeout = timeoutPeriod;
+                fopen(udpSocket);
+                udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
+
+                while true
+                    payload = struct('action', 'check_idle');
+                    jsonPayload = jsonencode(payload);
+                    fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+
+                    responseWaitStart = tic;
+                    while udpSocket.BytesAvailable == 0
+                        if toc(responseWaitStart) > timeoutPeriod || toc(startTime) > timeoutPeriod
+                            success = false;
+                            errMsg = 'Timed out waiting for check_idle confirmation.';
+                            return;
+                        end
+                        drawnow limitrate;
+                        pause(0.05);
+                    end
+
+                    response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
+                    responseText = native2unicode(uint8(response)','UTF-8');
+
+                    try
+                        reply = jsondecode(responseText);
+                    catch
+                        success = false;
+                        errMsg = ['Invalid check_idle JSON reply: ',responseText];
+                        return;
+                    end
+
+                    if ~isfield(reply,'action') || ~strcmp(reply.action,'check_idle')
+                        success = false;
+                        errMsg = 'Unexpected check_idle action in reply.';
+                        return;
+                    end
+                    if ~isfield(reply,'status')
+                        success = false;
+                        errMsg = 'Missing status in check_idle reply.';
+                        return;
+                    end
+
+                    replyStatus = char(string(reply.status));
+                    if strcmp(replyStatus,'error')
+                        replyError = 'Unknown check_idle error';
+                        if isfield(reply,'error')
+                            replyError = char(string(reply.error));
+                        end
+                        success = false;
+                        errMsg = ['check_idle error: ',replyError];
+                        return;
+                    end
+                    if ~strcmp(replyStatus,'ready')
+                        success = false;
+                        errMsg = ['Unexpected check_idle status: ',replyStatus];
+                        return;
+                    end
+
+                    isIdle = false;
+                    if isfield(reply,'idle')
+                        isIdle = logical(reply.idle);
+                    end
+
+                    if isIdle
+                        idleReason = '';
+                        if isfield(reply,'reason')
+                            idleReason = char(string(reply.reason));
+                        end
+                        if isempty(idleReason)
+                            app.debugMessage('Photostim reported idle.');
+                        else
+                            app.debugMessage(['Photostim reported idle: ',idleReason]);
+                        end
+                        return;
+                    end
+
+                    if toc(startTime) > timeoutPeriod
+                        success = false;
+                        errMsg = 'Timed out waiting for photostim to become idle.';
+                        return;
+                    end
+
+                    pause(pollInterval);
+                end
+            catch err
+                success = false;
+                errMsg = ['check_idle failed: ',err.message];
+            end
+        end
+
         function restoreRunButton(app)
             app.RunButton.Enable = "on";
             app.RunButton.Text = 'Run';
@@ -1722,6 +1830,15 @@ classdef bvGUI < matlab.apps.AppBase
                         concatenatedString = [concatenatedString, datagram{i},' '];
                     end
                     debugMessage(app,concatenatedString);
+
+                    if trialOpto2pData.enabled && ~app.abortFlag
+                        [success, trialOpto2pErr] = app.waitForOpto2pIdle(config);
+                        if ~success
+                            app.requestRunAbort(trialOpto2pErr);
+                            break;
+                        end
+                    end
+
                     %pause(0.5);
                     % check if abort has been pressed
                     if app.abortFlag
