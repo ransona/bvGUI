@@ -440,6 +440,8 @@ classdef bvGUI < matlab.apps.AppBase
             try
                 udpSocket = udp(config.opto2pListener, config.opto2pPort);
                 udpSocket.Timeout = timeoutPeriod;
+                udpSocket.InputBufferSize = 65535;
+                udpSocket.OutputBufferSize = 65535;
                 fopen(udpSocket);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
@@ -592,6 +594,8 @@ classdef bvGUI < matlab.apps.AppBase
             try
                 udpSocket = udp(config.opto2pListener, config.opto2pPort);
                 udpSocket.Timeout = timeoutPeriod;
+                udpSocket.InputBufferSize = 65535;
+                udpSocket.OutputBufferSize = 65535;
                 fopen(udpSocket);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
@@ -714,6 +718,8 @@ classdef bvGUI < matlab.apps.AppBase
             try
                 udpSocket = udp(config.opto2pListener, config.opto2pPort);
                 udpSocket.Timeout = timeoutPeriod;
+                udpSocket.InputBufferSize = 65535;
+                udpSocket.OutputBufferSize = 65535;
                 fopen(udpSocket);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
@@ -796,6 +802,8 @@ classdef bvGUI < matlab.apps.AppBase
             try
                 udpSocket = udp(config.opto2pListener, config.opto2pPort);
                 udpSocket.Timeout = timeoutPeriod;
+                udpSocket.InputBufferSize = 65535;
+                udpSocket.OutputBufferSize = 65535;
                 fopen(udpSocket);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
