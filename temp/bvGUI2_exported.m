@@ -941,6 +941,9 @@ classdef bvGUI < matlab.apps.AppBase
                 reply = jsondecode(responseText);
                 success = true;
             catch
+                fprintf(1,'UDP JSON decode failed.\n');
+                fprintf(1,'RAW_REPLY_BEGIN\n%s\nRAW_REPLY_END\n', rawResponseText);
+                fprintf(1,'CLEAN_REPLY_BEGIN\n%s\nCLEAN_REPLY_END\n', responseText);
                 success = false;
             end
         end
