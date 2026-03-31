@@ -569,29 +569,6 @@ classdef bvGUI < matlab.apps.AppBase
                     patternSummary = strjoin(patternNames,', ');
                 end
 
-                stimulusGroupSummary = '';
-                if isfield(reply,'stimulus_groups')
-                    stimulusGroups = reply.stimulus_groups;
-                    if isstruct(stimulusGroups)
-                        if numel(stimulusGroups) == 1
-                            stimulusGroups = stimulusGroups(:);
-                        end
-                        groupParts = cell(1,numel(stimulusGroups));
-                        for iGroup = 1:numel(stimulusGroups)
-                            groupNum = '';
-                            patternName = '';
-                            if isfield(stimulusGroups(iGroup),'stimulus_group_num')
-                                groupNum = char(string(stimulusGroups(iGroup).stimulus_group_num));
-                            end
-                            if isfield(stimulusGroups(iGroup),'pattern_name')
-                                patternName = char(string(stimulusGroups(iGroup).pattern_name));
-                            end
-                            groupParts{iGroup} = ['G',groupNum,'=',patternName];
-                        end
-                        stimulusGroupSummary = strjoin(groupParts,', ');
-                    end
-                end
-
                 app.debugMessage(['Opto_2p prep ready for schema ',prepData.schemaName,' and seq_nums [',seqNumSummary,']']);
                 if ~isempty(preparedSeqNumsSummary)
                     app.debugMessage(['Prepared seq_nums: ',preparedSeqNumsSummary]);
@@ -601,9 +578,6 @@ classdef bvGUI < matlab.apps.AppBase
                 end
                 if ~isempty(patternSummary)
                     app.debugMessage(['Prepared patterns: ',patternSummary]);
-                end
-                if ~isempty(stimulusGroupSummary)
-                    app.debugMessage(['Prepared stimulus groups: ',stimulusGroupSummary]);
                 end
             catch err
                 success = false;
