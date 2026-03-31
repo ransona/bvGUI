@@ -1909,18 +1909,6 @@ classdef bvGUI < matlab.apps.AppBase
                         datagram = u.receive();
                         drawnow limitrate;
                     end
-                    % Initialize an empty string
-                    concatenatedString = '';
-                    % Loop through each cell in the outer array
-                    for i = 1:length(datagram)
-                        % Access the string in the inner cell and concatenate
-                        concatenatedString = [concatenatedString, datagram{i},' '];
-                    end
-                    concatenatedString = strtrim(concatenatedString);
-                    if ~strcmp(concatenatedString,'/end')
-                        debugMessage(app,concatenatedString);
-                    end
-
                     if trialOpto2pData.enabled && ~app.abortFlag
                         [success, trialOpto2pErr] = app.waitForOpto2pIdle(config);
                         if ~success
