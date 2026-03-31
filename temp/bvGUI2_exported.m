@@ -916,8 +916,17 @@ classdef bvGUI < matlab.apps.AppBase
         function [reply, responseText, success] = decodeUdpJsonReply(app, response)
             reply = struct();
             success = false;
-            responseText = native2unicode(uint8(response)','UTF-8');
-            responseText = regexprep(responseText,'[\x00-\x1F]+','');
+            rawResponseText = native2unicode(uint8(response)','UTF-8');
+            responseText = strtrim(rawResponseText);
+
+            try
+                reply = jsondecode(responseText);
+                success = true;
+                return;
+            catch
+            end
+
+            responseText = regexprep(rawResponseText,'[\x00-\x1F]+','');
             responseText = strtrim(responseText);
 
             firstBrace = find(responseText == '{', 1, 'first');
