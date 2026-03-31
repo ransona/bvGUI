@@ -912,8 +912,8 @@ classdef bvGUI < matlab.apps.AppBase
             responseText = regexprep(responseText,'[\x00-\x1F]+','');
             responseText = strtrim(responseText);
 
-            firstBrace = regexp(responseText,'\{','once');
-            lastBrace = regexp(responseText,'\}(?!.*\})','once');
+            firstBrace = find(responseText == '{', 1, 'first');
+            lastBrace = find(responseText == '}', 1, 'last');
             if isempty(firstBrace) || isempty(lastBrace) || lastBrace < firstBrace
                 return;
             end
