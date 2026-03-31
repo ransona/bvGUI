@@ -464,11 +464,8 @@ classdef bvGUI < matlab.apps.AppBase
                 end
 
                 response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
-                responseText = native2unicode(uint8(response)','UTF-8');
-
-                try
-                    reply = jsondecode(responseText);
-                catch
+                [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
+                if ~decodedOk
                     success = false;
                     errMsg = ['Invalid opto_2p JSON reply for seq_nums [',seqNumSummary,']: ',responseText];
                     return;
@@ -618,11 +615,8 @@ classdef bvGUI < matlab.apps.AppBase
                 end
 
                 response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
-                responseText = native2unicode(uint8(response)','UTF-8');
-
-                try
-                    reply = jsondecode(responseText);
-                catch
+                [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
+                if ~decodedOk
                     success = false;
                     errMsg = ['Invalid opto_2p trigger JSON reply for seq_num ',num2str(trialData.seqNum),': ',responseText];
                     return;
@@ -734,11 +728,8 @@ classdef bvGUI < matlab.apps.AppBase
                 end
 
                 response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
-                responseText = native2unicode(uint8(response)','UTF-8');
-
-                try
-                    reply = jsondecode(responseText);
-                catch
+                [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
+                if ~decodedOk
                     success = false;
                     errMsg = ['Invalid abort_photo_stim JSON reply: ',responseText];
                     return;
@@ -818,11 +809,8 @@ classdef bvGUI < matlab.apps.AppBase
                     end
 
                     response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
-                    responseText = native2unicode(uint8(response)','UTF-8');
-
-                    try
-                        reply = jsondecode(responseText);
-                    catch
+                    [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
+                    if ~decodedOk
                         success = false;
                         errMsg = ['Invalid check_idle JSON reply: ',responseText];
                         return;
@@ -914,6 +902,29 @@ classdef bvGUI < matlab.apps.AppBase
             try
                 delete(udpSocket);
             catch
+            end
+        end
+
+        function [reply, responseText, success] = decodeUdpJsonReply(app, response)
+            reply = struct();
+            success = false;
+            responseText = native2unicode(uint8(response)','UTF-8');
+            responseText = regexprep(responseText,'[\x00-\x1F]+','');
+            responseText = strtrim(responseText);
+
+            firstBrace = regexp(responseText,'\{','once');
+            lastBrace = regexp(responseText,'\}(?!.*\})','once');
+            if isempty(firstBrace) || isempty(lastBrace) || lastBrace < firstBrace
+                return;
+            end
+
+            responseText = responseText(firstBrace:lastBrace);
+
+            try
+                reply = jsondecode(responseText);
+                success = true;
+            catch
+                success = false;
             end
         end
 
