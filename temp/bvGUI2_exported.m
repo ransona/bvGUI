@@ -418,12 +418,12 @@ classdef bvGUI < matlab.apps.AppBase
             global bvData;
 
             uniqueStimIdxList = unique(stimIdxList, 'stable');
-            stimulusConditions = repmat(struct('stimulus_id', [], 'reps', [], 'features', []), 1, numel(uniqueStimIdxList));
+            stimulusConditions = cell(1, numel(uniqueStimIdxList));
 
             for iCondition = 1:numel(uniqueStimIdxList)
                 stimIdx = uniqueStimIdxList(iCondition);
                 features = expDataEval(stimIdx).features;
-                featureEntries = struct('name', {}, 'params', {});
+                featureEntries = cell(1, 0);
 
                 for iFeature = 1:length(features)
                     feature = features(iFeature);
@@ -442,13 +442,15 @@ classdef bvGUI < matlab.apps.AppBase
                         paramsStruct.(paramName) = app.convertStimParamForJson(feature.vals{iParam});
                     end
 
-                    featureEntries(end+1).name = featureName; %#ok<AGROW>
-                    featureEntries(end).params = paramsStruct;
+                    featureEntries{end+1} = struct( ... %#ok<AGROW>
+                        'name', featureName, ...
+                        'params', paramsStruct);
                 end
 
-                stimulusConditions(iCondition).stimulus_id = stimIdx;
-                stimulusConditions(iCondition).reps = bvData.expData.stims(stimIdx).reps;
-                stimulusConditions(iCondition).features = featureEntries;
+                stimulusConditions{iCondition} = struct( ...
+                    'stimulus_id', stimIdx, ...
+                    'reps', bvData.expData.stims(stimIdx).reps, ...
+                    'features', {featureEntries});
             end
 
             conditionCatalog = stimulusConditions;
