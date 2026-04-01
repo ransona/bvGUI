@@ -1091,6 +1091,23 @@ classdef bvGUI < matlab.apps.AppBase
             end
         end
 
+        function ensureBvDataInitialized(app)
+            global bvData;
+
+            if ~isstruct(bvData)
+                bvData = struct();
+            end
+            if ~isfield(bvData,'expData') || ~isstruct(bvData.expData)
+                bvData.expData = struct();
+            end
+            if ~isfield(bvData.expData,'stims') || ~isstruct(bvData.expData.stims)
+                bvData.expData.stims = struct('features', {}, 'reps', {});
+            end
+            if ~isfield(bvData,'settings') || ~isstruct(bvData.settings)
+                bvData.settings = struct();
+            end
+        end
+
         function [reply, responseText, success] = decodeUdpJsonReply(app, response)
             reply = struct();
             success = false;
@@ -1131,6 +1148,7 @@ classdef bvGUI < matlab.apps.AppBase
             % function to make the table in the gui reflect the currently
             % loaded experiment data structure
             global bvData;
+            app.ensureBvDataInitialized();
 
             if isfield(bvData.expData,'vars')
                 app.VariablesEditField.Value = bvData.expData.vars;
@@ -1324,8 +1342,8 @@ classdef bvGUI < matlab.apps.AppBase
         % Code that executes after component creation
         function startupFcn(app)
             global bvData;
-            bvData = [];
-            bvData.expData.stims = [];
+            bvData = struct();
+            app.ensureBvDataInitialized();
             try
                 config = app.getRepoConfig();
             catch err
@@ -1392,8 +1410,9 @@ classdef bvGUI < matlab.apps.AppBase
         function NewButtonPushed(app, event)
             % create empty experiment structure
             global bvData;
-            bvData.expData = [];
-            bvData.expData.stims = [];
+            app.ensureBvDataInitialized();
+            bvData.expData = struct();
+            bvData.expData.stims = struct('features', {}, 'reps', {});
             app.StimulusListBox.Tag = '';
             app.FeatureListBox.Tag = '';
             app.FeatureListBox.Value = {};
@@ -1403,6 +1422,7 @@ classdef bvGUI < matlab.apps.AppBase
         % Button pushed function: ButtonAddStim
         function ButtonAddStimPushed(app, event)
             global bvData;
+            app.ensureBvDataInitialized();
             bvData.expData.stims(end+1).features = [];
             bvData.expData.stims(end).reps = str2num(app.RepsEditField.Value);
             app.StimulusListBox.Tag = num2str(length(bvData.expData.stims));
@@ -1413,6 +1433,7 @@ classdef bvGUI < matlab.apps.AppBase
         % Button pushed function: ButtonAddFeature
         function ButtonAddFeaturePushed(app, event)
             global bvData;
+            app.ensureBvDataInitialized();
             % determine current selected new feature to add
             currentNewFeat = str2num(app.NewFeatureListBox.Tag);
             currentStim = str2num(app.StimulusListBox.Tag);
