@@ -503,8 +503,8 @@ classdef bvGUI < matlab.apps.AppBase
 
                 payload = struct( ...
                     'action', 'update_experiment_params', ...
-                    'expID', expID, ...
-                    'stimulus_conditions', stimulusConditions);
+                    'expID', expID);
+                payload.stimulus_conditions = stimulusConditions;
                 jsonPayload = jsonencode(payload);
                 fprintf(1,'UPDATE_EXPERIMENT_PARAMS_JSON_BEGIN\n%s\nUPDATE_EXPERIMENT_PARAMS_JSON_END\n', jsonPayload);
                 app.debugMessage(['Sending update_experiment_params for ',num2str(numel(stimulusConditions)),' stimulus conditions via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
