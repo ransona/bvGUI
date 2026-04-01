@@ -489,6 +489,7 @@ classdef bvGUI < matlab.apps.AppBase
 
             udpSocket = [];
             timeoutPeriod = 600;
+            replyWaitPeriod = 1;
 
             try
                 udpSocket = udp(config.opto2pListener, config.opto2pPort);
@@ -508,9 +509,12 @@ classdef bvGUI < matlab.apps.AppBase
 
                 startTime = tic;
                 while udpSocket.BytesAvailable == 0
+                    if toc(startTime) > replyWaitPeriod
+                        app.debugMessage('No update_experiment_params reply received; continuing.');
+                        return;
+                    end
                     if toc(startTime) > timeoutPeriod
-                        success = false;
-                        errMsg = 'Timed out waiting for update_experiment_params confirmation.';
+                        app.debugMessage('No update_experiment_params reply received; continuing.');
                         return;
                     end
                     drawnow limitrate;
