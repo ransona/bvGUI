@@ -414,6 +414,151 @@ classdef bvGUI < matlab.apps.AppBase
             trialData.seqNum = seqNum;
         end
 
+        function conditionCatalog = buildStimulusConditionCatalog(app, expDataEval, stimIdxList)
+            global bvData;
+
+            uniqueStimIdxList = unique(stimIdxList, 'stable');
+            stimulusConditions = repmat(struct('stimulus_id', [], 'reps', [], 'features', []), 1, numel(uniqueStimIdxList));
+
+            for iCondition = 1:numel(uniqueStimIdxList)
+                stimIdx = uniqueStimIdxList(iCondition);
+                features = expDataEval(stimIdx).features;
+                featureEntries = struct('name', {}, 'params', {});
+
+                for iFeature = 1:length(features)
+                    feature = features(iFeature);
+                    featureName = feature.name{1};
+                    featureParams = cell2struct(feature.vals',feature.params);
+
+                    if any(strcmp(featureName,{'opto','opto_2p'}))
+                        if isfield(featureParams,'enable') && ~strcmp(strtrim(featureParams.enable),'1')
+                            continue;
+                        end
+                    end
+
+                    paramsStruct = struct();
+                    for iParam = 1:numel(feature.params)
+                        paramName = feature.params{iParam};
+                        paramsStruct.(paramName) = app.convertStimParamForJson(feature.vals{iParam});
+                    end
+
+                    featureEntries(end+1).name = featureName; %#ok<AGROW>
+                    featureEntries(end).params = paramsStruct;
+                end
+
+                stimulusConditions(iCondition).stimulus_id = stimIdx;
+                stimulusConditions(iCondition).reps = bvData.expData.stims(stimIdx).reps;
+                stimulusConditions(iCondition).features = featureEntries;
+            end
+
+            conditionCatalog = stimulusConditions;
+        end
+
+        function jsonValue = convertStimParamForJson(app, rawValue)
+            jsonValue = rawValue;
+
+            if isstring(rawValue)
+                rawValue = char(rawValue);
+            end
+
+            if ischar(rawValue)
+                valueText = strtrim(rawValue);
+                numericValue = str2num(valueText); %#ok<ST2NM>
+                if ~isempty(numericValue)
+                    jsonValue = numericValue;
+                else
+                    jsonValue = valueText;
+                end
+            end
+        end
+
+        function [success, errMsg] = sendExperimentParams(app, config, expID, stimulusConditions)
+            success = true;
+            errMsg = '';
+
+            if isempty(config.opto2pListener)
+                success = false;
+                errMsg = ['Experiment params endpoint is not available on machine ',config.machineName,': network.opto_2p_listener is not configured.'];
+                return;
+            end
+            if isnan(config.opto2pPort) || ~isfinite(config.opto2pPort) || config.opto2pPort <= 0
+                success = false;
+                errMsg = ['Experiment params endpoint is not available on machine ',config.machineName,': network.opto_2p_port is not configured.'];
+                return;
+            end
+
+            udpSocket = [];
+            timeoutPeriod = 600;
+
+            try
+                udpSocket = udp(config.opto2pListener, config.opto2pPort);
+                udpSocket.Timeout = timeoutPeriod;
+                udpSocket.InputBufferSize = 65535;
+                udpSocket.OutputBufferSize = 65535;
+                fopen(udpSocket);
+                udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
+
+                payload = struct( ...
+                    'action', 'update_experiment_params', ...
+                    'expID', expID, ...
+                    'stimulus_conditions', stimulusConditions);
+                jsonPayload = jsonencode(payload);
+                app.debugMessage(['Sending update_experiment_params for ',num2str(numel(stimulusConditions)),' stimulus conditions via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
+                fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+
+                startTime = tic;
+                while udpSocket.BytesAvailable == 0
+                    if toc(startTime) > timeoutPeriod
+                        success = false;
+                        errMsg = 'Timed out waiting for update_experiment_params confirmation.';
+                        return;
+                    end
+                    drawnow limitrate;
+                    pause(0.1);
+                end
+
+                response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
+                [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
+                if ~decodedOk
+                    success = false;
+                    errMsg = ['Invalid update_experiment_params JSON reply: ',responseText];
+                    return;
+                end
+
+                if ~isfield(reply,'action') || ~strcmp(reply.action,'update_experiment_params')
+                    success = false;
+                    errMsg = 'Unexpected update_experiment_params action in reply.';
+                    return;
+                end
+                if ~isfield(reply,'status')
+                    success = false;
+                    errMsg = 'Missing status in update_experiment_params reply.';
+                    return;
+                end
+
+                replyStatus = char(string(reply.status));
+                if strcmp(replyStatus,'error')
+                    replyError = 'Unknown update_experiment_params error';
+                    if isfield(reply,'error')
+                        replyError = char(string(reply.error));
+                    end
+                    success = false;
+                    errMsg = ['update_experiment_params error: ',replyError];
+                    return;
+                end
+                if ~strcmp(replyStatus,'ready')
+                    success = false;
+                    errMsg = ['Unexpected update_experiment_params status: ',replyStatus];
+                    return;
+                end
+
+                app.debugMessage('update_experiment_params acknowledged.');
+            catch err
+                success = false;
+                errMsg = ['update_experiment_params failed: ',err.message];
+            end
+        end
+
         function needsDefaultGrating = trialNeedsDefaultBonvisionTrigger(app, expDataEval, stimIdx)
             needsDefaultGrating = false;
             hasOpto2p = false;
@@ -1481,6 +1626,14 @@ classdef bvGUI < matlab.apps.AppBase
                 end
             end
 
+            stimulusConditions = app.buildStimulusConditionCatalog(expDataEval, completeStimSeq);
+            [success, updateParamsErr] = app.sendExperimentParams(config, expID, stimulusConditions);
+            if ~success
+                app.debugMessage(updateParamsErr);
+                app.restoreRunButton();
+                return;
+            end
+
             [opto2pPrep, opto2pErr] = app.collectOpto2pPrepData(expDataEval, completeStimSeq);
             if ~isempty(opto2pErr)
                 app.debugMessage(['Opto_2p prep error: ', opto2pErr]);
@@ -2299,6 +2452,17 @@ classdef bvGUI < matlab.apps.AppBase
                     rig.resource(all_resources{iRes});
                 end
                 rig.preload();
+
+                stimulusConditions = app.buildStimulusConditionCatalog(expDataEval, completeStimSeq);
+                [success, updateParamsErr] = app.sendExperimentParams(config, expID, stimulusConditions);
+                if ~success
+                    app.debugMessage(updateParamsErr);
+                    rig.clear();
+                    rig.experiment('');
+                    app.TestStimBtn.Text = 'Test';
+                    app.TestStimBtn.BackgroundColor = 'g';
+                    return;
+                end
 
                 [opto2pPrep, opto2pErr] = app.collectOpto2pPrepData(expDataEval, completeStimSeq);
                 if ~isempty(opto2pErr)
