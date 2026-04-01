@@ -378,15 +378,15 @@ classdef bvGUI < matlab.apps.AppBase
                     errMsg = ['Missing schema_name in opto_2p feature for stimulus ',num2str(stimIdx)];
                     return;
                 end
-                if ~isfield(featureParams,'seq_number') || isempty(strtrim(featureParams.seq_number))
-                    errMsg = ['Missing seq_number in opto_2p feature for stimulus ',num2str(stimIdx)];
+                if ~isfield(featureParams,'seq_num') || isempty(strtrim(featureParams.seq_num))
+                    errMsg = ['Missing seq_num in opto_2p feature for stimulus ',num2str(stimIdx)];
                     return;
                 end
 
                 currentSchemaName = strtrim(featureParams.schema_name);
-                currentSeqNum = str2double(featureParams.seq_number);
+                currentSeqNum = str2double(featureParams.seq_num);
                 if isnan(currentSeqNum) || ~isfinite(currentSeqNum) || currentSeqNum ~= floor(currentSeqNum)
-                    errMsg = ['Invalid opto_2p seq_number: ',featureParams.seq_number];
+                    errMsg = ['Invalid opto_2p seq_num: ',featureParams.seq_num];
                     return;
                 end
 
@@ -400,7 +400,7 @@ classdef bvGUI < matlab.apps.AppBase
                 if isempty(seqNum)
                     seqNum = currentSeqNum;
                 elseif seqNum ~= currentSeqNum
-                    errMsg = ['Conflicting opto_2p seq_number values within stimulus ',num2str(stimIdx)];
+                    errMsg = ['Conflicting opto_2p seq_num values within stimulus ',num2str(stimIdx)];
                     return;
                 end
             end
