@@ -504,6 +504,7 @@ classdef bvGUI < matlab.apps.AppBase
                     'expID', expID, ...
                     'stimulus_conditions', stimulusConditions);
                 jsonPayload = jsonencode(payload);
+                fprintf(1,'UPDATE_EXPERIMENT_PARAMS_JSON_BEGIN\n%s\nUPDATE_EXPERIMENT_PARAMS_JSON_END\n', jsonPayload);
                 app.debugMessage(['Sending update_experiment_params for ',num2str(numel(stimulusConditions)),' stimulus conditions via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
                 fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
 
