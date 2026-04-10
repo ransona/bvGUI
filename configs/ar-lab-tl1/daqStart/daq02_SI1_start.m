@@ -26,9 +26,9 @@ try
     msg = 'Timed out waiting for response';
   end
   udpComms.delete;
-catch
+catch ME
   success = 0;
-  msg = 'Unknown error';
+  msg = ME.message;
   try
     udpComms.delete;
   catch

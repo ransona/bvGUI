@@ -1692,9 +1692,18 @@ classdef bvGUI < matlab.apps.AppBase
             for iDaq = 1:length(daqList)
                 if daqEnabled(iDaq)
                     app.debugMessage(['Running ',daqList{iDaq}]);
-                    [success,resp_msg] = eval([daqList{iDaq}(1:end-2),'(expID)']);
+                    try
+                        [success,resp_msg] = eval([daqList{iDaq}(1:end-2),'(expID)']);
+                    catch daqStartErr
+                        success = false;
+                        resp_msg = daqStartErr.message;
+                    end
                     if ~success
                         err_msg = ['Error starting ',daqList{iDaq}];
+                        if ~isempty(resp_msg)
+                            app.debugMessage(['Start error detail for ',daqList{iDaq},': ',resp_msg]);
+                            err_msg = [err_msg,'; ',resp_msg];
+                        end
                         app.debugMessage('Error... attempting to stop all DAQs');
                         % attempt to stop all of the daqs in reverse
                         daqList = dir(fullfile(config.daqStopDir,'*.m'));
@@ -1703,10 +1712,20 @@ classdef bvGUI < matlab.apps.AppBase
                         for iDaqStop = iDaq-1:-1:1
                             if daqEnabled(iDaqStop)
                                 app.debugMessage(['Stopping ',daqList{iDaqStop}]);
-                                [success,resp_msg] = eval(daqList{iDaqStop}(1:end-2));
+                                try
+                                    [success,resp_msg] = eval(daqList{iDaqStop}(1:end-2));
+                                catch daqStopErr
+                                    success = false;
+                                    resp_msg = daqStopErr.message;
+                                end
                                 if ~success
                                     app.debugMessage(['Error stopping ',daqList{iDaqStop}]);
-                                    err_msg = [err_msg,'; ', ['Error stopping ',daqList{iDaqStop}]];
+                                    if ~isempty(resp_msg)
+                                        app.debugMessage(['Stop error detail for ',daqList{iDaqStop},': ',resp_msg]);
+                                        err_msg = [err_msg,'; ', ['Error stopping ',daqList{iDaqStop},': ',resp_msg]];
+                                    else
+                                        err_msg = [err_msg,'; ', ['Error stopping ',daqList{iDaqStop}]];
+                                    end
                                 else
                                     % app.debugMessage('OK');
                                 end
