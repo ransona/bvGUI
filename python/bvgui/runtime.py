@@ -426,6 +426,12 @@ class ExperimentRunner:
 
                 opto = collect_opto_trial(stimulus)
                 if opto:
+                    self.log(
+                        "Opto_2p trial routing: "
+                        f"stim_index={stim_index} "
+                        f"listener={self.config.opto2p_listener or '<unset>'} "
+                        f"port={self.config.opto2p_port!s}"
+                    )
                     self._start_opto_trial(stim_index - 1)
                     self._trigger_opto(exp_id, opto)
                     opto_active = True
@@ -557,11 +563,19 @@ class ExperimentRunner:
     def _start_opto_trial(self, trial_index: int) -> None:
         if not self.config.opto2p_listener or not self.config.opto2p_port:
             raise RuntimeError("Opto_2p is referenced by the protocol but not configured in bvGUI.ini.")
+        payload = {"action": "start_trial", "trial_index": trial_index}
+        self.log(
+            "Sending opto_2p start_trial: "
+            f"listener={self.config.opto2p_listener} "
+            f"port={self.config.opto2p_port} "
+            f"payload={payload}"
+        )
         reply = send_udp_json(
             self.config.opto2p_listener,
             self.config.opto2p_port,
-            {"action": "start_trial", "trial_index": trial_index},
+            payload,
         )
+        self.log(f"Opto_2p start_trial reply: {reply}")
         if reply.get("status") != "ready":
             raise RuntimeError(f"start_trial failed: {reply}")
 
