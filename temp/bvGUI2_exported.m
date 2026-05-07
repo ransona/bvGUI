@@ -509,7 +509,7 @@ classdef bvGUI < matlab.apps.AppBase
             end
         end
 
-        function [success, errMsg] = sendExperimentParams(app, config, expID, stimulusConditions)
+        function [success, errMsg] = sendExperimentParams(app, config, expID, stimulusConditions, trialConditionIndices)
             success = true;
             errMsg = '';
 
@@ -540,6 +540,7 @@ classdef bvGUI < matlab.apps.AppBase
                     'action', 'update_experiment_params', ...
                     'expID', expID);
                 payload.stimulus_conditions = stimulusConditions;
+                payload.trial_condition_indices = trialConditionIndices;
                 jsonPayload = jsonencode(payload);
                 fprintf(1,'UPDATE_EXPERIMENT_PARAMS_JSON_BEGIN\n%s\nUPDATE_EXPERIMENT_PARAMS_JSON_END\n', jsonPayload);
                 app.debugMessage(['Sending update_experiment_params for ',num2str(numel(stimulusConditions)),' stimulus conditions via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
@@ -1781,7 +1782,8 @@ classdef bvGUI < matlab.apps.AppBase
                 app.restoreRunButton();
                 return;
             end
-            [success, updateParamsErr] = app.sendExperimentParams(config, expID, stimulusConditions);
+            trialConditionIndices = conditionIndexByStimIdx(completeStimSeq);
+            [success, updateParamsErr] = app.sendExperimentParams(config, expID, stimulusConditions, trialConditionIndices);
             if ~success
                 app.debugMessage(updateParamsErr);
                 app.restoreRunButton();
@@ -2640,7 +2642,8 @@ classdef bvGUI < matlab.apps.AppBase
                     app.TestStimBtn.BackgroundColor = 'g';
                     return;
                 end
-                [success, updateParamsErr] = app.sendExperimentParams(config, expID, stimulusConditions);
+                trialConditionIndices = conditionIndexByStimIdx(completeStimSeq);
+                [success, updateParamsErr] = app.sendExperimentParams(config, expID, stimulusConditions, trialConditionIndices);
                 if ~success
                     app.debugMessage(updateParamsErr);
                     rig.clear();
