@@ -1,0 +1,4 @@
+PySide6>=6.8
+scipy>=1.10
+h5py>=3.8
+nidaqmx>=0.9

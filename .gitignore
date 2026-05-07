@@ -1,0 +1,8 @@
+python/.venv/
+python/**/__pycache__/
+python/bvgui_crash.log
+python/$tmpdir/
+simulated_windows_paths/
+c:\\local_repository/
+configs/ar-lab-tl1/stimsets/Adam/test.json
+configs/ar-lab-tl2/stimsets/Adam/protocol.json
