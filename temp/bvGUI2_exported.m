@@ -547,7 +547,7 @@ classdef bvGUI < matlab.apps.AppBase
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                 if ~decodedOk
                     success = false;
-                    errMsg = ['Invalid update_experiment_params JSON reply: ',responseText];
+                    errMsg = sprintf('Invalid update_experiment_params JSON reply: %s', app.jsonValueToText(responseText));
                     return;
                 end
 
@@ -627,7 +627,7 @@ classdef bvGUI < matlab.apps.AppBase
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                 if ~decodedOk
                     success = false;
-                    errMsg = ['Invalid start_trial JSON reply for index ',num2str(trialIndex),': ',responseText];
+                    errMsg = sprintf('Invalid start_trial JSON reply for index %d: %s', trialIndex, app.jsonValueToText(responseText));
                     return;
                 end
 
@@ -752,7 +752,7 @@ classdef bvGUI < matlab.apps.AppBase
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                 if ~decodedOk
                     success = false;
-                    errMsg = ['Invalid opto_2p JSON reply for seq_nums [',seqNumSummary,']: ',responseText];
+                    errMsg = sprintf('Invalid opto_2p JSON reply for seq_nums [%s]: %s', seqNumSummary, app.jsonValueToText(responseText));
                     return;
                 end
 
@@ -868,7 +868,7 @@ classdef bvGUI < matlab.apps.AppBase
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                 if ~decodedOk
                     success = false;
-                    errMsg = ['Invalid opto_2p trigger JSON reply for seq_num ',num2str(trialData.seqNum),': ',responseText];
+                    errMsg = sprintf('Invalid opto_2p trigger JSON reply for seq_num %d: %s', trialData.seqNum, app.jsonValueToText(responseText));
                     return;
                 end
 
@@ -977,7 +977,7 @@ classdef bvGUI < matlab.apps.AppBase
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                 if ~decodedOk
                     success = false;
-                    errMsg = ['Invalid abort_photo_stim JSON reply: ',responseText];
+                    errMsg = sprintf('Invalid abort_photo_stim JSON reply: %s', app.jsonValueToText(responseText));
                     return;
                 end
 
@@ -1051,7 +1051,7 @@ classdef bvGUI < matlab.apps.AppBase
                     [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                     if ~decodedOk
                         success = false;
-                        errMsg = ['Invalid check_idle JSON reply: ',responseText];
+                        errMsg = sprintf('Invalid check_idle JSON reply: %s', app.jsonValueToText(responseText));
                         return;
                     end
 
@@ -1245,6 +1245,7 @@ classdef bvGUI < matlab.apps.AppBase
             elseif ~ischar(rawResponseText)
                 rawResponseText = char(rawResponseText);
             end
+            rawResponseText = rawResponseText(:)';
             responseText = strtrim(rawResponseText);
 
             try
@@ -1258,6 +1259,7 @@ classdef bvGUI < matlab.apps.AppBase
             keepMask = responseChars >= 32 | responseChars == 9 | responseChars == 10 | responseChars == 13;
             responseText = rawResponseText(keepMask);
             responseText = strtrim(responseText);
+            responseText = responseText(:)';
 
             firstBrace = find(responseText == '{', 1, 'first');
             lastBrace = find(responseText == '}', 1, 'last');
@@ -1266,6 +1268,7 @@ classdef bvGUI < matlab.apps.AppBase
             end
 
             responseText = responseText(firstBrace:lastBrace);
+            responseText = responseText(:)';
 
             try
                 reply = jsondecode(responseText);
