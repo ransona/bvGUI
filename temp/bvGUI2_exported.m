@@ -562,11 +562,11 @@ classdef bvGUI < matlab.apps.AppBase
                     return;
                 end
 
-                replyStatus = char(string(reply.status));
+                replyStatus = app.jsonValueToText(reply.status);
                 if strcmp(replyStatus,'error')
                     replyError = 'Unknown update_experiment_params error';
                     if isfield(reply,'error')
-                        replyError = char(string(reply.error));
+                        replyError = app.jsonValueToText(reply.error);
                     end
                     success = false;
                     errMsg = ['update_experiment_params error: ',replyError];
@@ -637,11 +637,11 @@ classdef bvGUI < matlab.apps.AppBase
                     return;
                 end
 
-                replyStatus = char(string(reply.status));
+                replyStatus = app.jsonValueToText(reply.status);
                 if strcmp(replyStatus,'error')
                     replyError = 'Unknown start_trial error';
                     if isfield(reply,'error')
-                        replyError = char(string(reply.error));
+                        replyError = app.jsonValueToText(reply.error);
                     end
                     success = false;
                     errMsg = ['start_trial error for index ',num2str(trialIndex),': ',replyError];
@@ -734,7 +734,7 @@ classdef bvGUI < matlab.apps.AppBase
                     'expID', expID, ...
                     'seq_nums', prepData.seqNums);
                 jsonPayload = jsonencode(payload);
-                seqNumSummary = strjoin(cellstr(string(prepData.seqNums)),', ');
+                seqNumSummary = strjoin(app.jsonValueToTextCell(prepData.seqNums),', ');
                 app.debugMessage(['Preparing opto_2p masks for seq_nums [',seqNumSummary,'] via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
                 app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
 
@@ -756,12 +756,12 @@ classdef bvGUI < matlab.apps.AppBase
                     errMsg = 'Unexpected opto_2p prep action in reply.';
                     return;
                 end
-                if ~isfield(reply,'schema_name') || ~strcmp(char(string(reply.schema_name)),prepData.schemaName)
+                if ~isfield(reply,'schema_name') || ~strcmp(app.jsonValueToText(reply.schema_name),prepData.schemaName)
                     success = false;
                     errMsg = 'Schema mismatch in opto_2p prep reply.';
                     return;
                 end
-                if ~isfield(reply,'expID') || ~strcmp(char(string(reply.expID)),expID)
+                if ~isfield(reply,'expID') || ~strcmp(app.jsonValueToText(reply.expID),expID)
                     success = false;
                     errMsg = 'expID mismatch in opto_2p prep reply.';
                     return;
@@ -772,11 +772,11 @@ classdef bvGUI < matlab.apps.AppBase
                     return;
                 end
 
-                replyStatus = char(string(reply.status));
+                replyStatus = app.jsonValueToText(reply.status);
                 if strcmp(replyStatus,'error')
                     replyError = 'Unknown opto_2p error';
                     if isfield(reply,'error')
-                        replyError = char(string(reply.error));
+                        replyError = app.jsonValueToText(reply.error);
                     end
                     success = false;
                     errMsg = ['Opto_2p prep error: ',replyError];
@@ -790,17 +790,17 @@ classdef bvGUI < matlab.apps.AppBase
 
                 preparedSeqNumsSummary = '';
                 if isfield(reply,'prepared_seq_nums')
-                    preparedSeqNumsSummary = strjoin(cellstr(string(reply.prepared_seq_nums)),', ');
+                    preparedSeqNumsSummary = strjoin(app.jsonValueToTextCell(reply.prepared_seq_nums),', ');
                 end
 
                 preparedSequenceNamesSummary = '';
                 if isfield(reply,'prepared_sequence_names')
-                    preparedSequenceNamesSummary = strjoin(cellstr(string(reply.prepared_sequence_names)),', ');
+                    preparedSequenceNamesSummary = strjoin(app.jsonValueToTextCell(reply.prepared_sequence_names),', ');
                 end
 
                 patternSummary = '';
                 if isfield(reply,'pattern_names')
-                    patternNames = cellstr(string(reply.pattern_names));
+                    patternNames = app.jsonValueToTextCell(reply.pattern_names);
                     patternSummary = strjoin(patternNames,', ');
                 end
 
@@ -872,12 +872,12 @@ classdef bvGUI < matlab.apps.AppBase
                     errMsg = ['Unexpected opto_2p trigger action for seq_num ',num2str(trialData.seqNum)];
                     return;
                 end
-                if ~isfield(reply,'schema_name') || ~strcmp(char(string(reply.schema_name)),trialData.schemaName)
+                if ~isfield(reply,'schema_name') || ~strcmp(app.jsonValueToText(reply.schema_name),trialData.schemaName)
                     success = false;
                     errMsg = ['Schema mismatch in opto_2p trigger reply for seq_num ',num2str(trialData.seqNum)];
                     return;
                 end
-                if ~isfield(reply,'expID') || ~strcmp(char(string(reply.expID)),expID)
+                if ~isfield(reply,'expID') || ~strcmp(app.jsonValueToText(reply.expID),expID)
                     success = false;
                     errMsg = ['expID mismatch in opto_2p trigger reply for seq_num ',num2str(trialData.seqNum)];
                     return;
@@ -888,7 +888,7 @@ classdef bvGUI < matlab.apps.AppBase
                     return;
                 end
 
-                replySeqNum = str2double(char(string(reply.seq_num)));
+                replySeqNum = app.jsonValueToDouble(reply.seq_num);
                 if isnan(replySeqNum) || replySeqNum ~= trialData.seqNum
                     success = false;
                     errMsg = ['seq_num mismatch in opto_2p trigger reply for seq_num ',num2str(trialData.seqNum)];
@@ -900,11 +900,11 @@ classdef bvGUI < matlab.apps.AppBase
                     return;
                 end
 
-                replyStatus = char(string(reply.status));
+                replyStatus = app.jsonValueToText(reply.status);
                 if strcmp(replyStatus,'error')
                     replyError = 'Unknown opto_2p trigger error';
                     if isfield(reply,'error')
-                        replyError = char(string(reply.error));
+                        replyError = app.jsonValueToText(reply.error);
                     end
                     success = false;
                     errMsg = ['Opto_2p trigger error for seq_num ',num2str(trialData.seqNum),': ',replyError];
@@ -918,11 +918,11 @@ classdef bvGUI < matlab.apps.AppBase
 
                 sequenceName = '';
                 if isfield(reply,'sequence_name')
-                    sequenceName = char(string(reply.sequence_name));
+                    sequenceName = app.jsonValueToText(reply.sequence_name);
                 end
                 stimulusGroupsSummary = '';
                 if isfield(reply,'stimulus_groups')
-                    stimulusGroupsSummary = strjoin(cellstr(string(reply.stimulus_groups)),', ');
+                    stimulusGroupsSummary = strjoin(app.jsonValueToTextCell(reply.stimulus_groups),', ');
                 end
 
                 if isempty(stimulusGroupsSummary)
@@ -987,11 +987,11 @@ classdef bvGUI < matlab.apps.AppBase
                     return;
                 end
 
-                replyStatus = char(string(reply.status));
+                replyStatus = app.jsonValueToText(reply.status);
                 if strcmp(replyStatus,'error')
                     replyError = 'Unknown abort_photo_stim error';
                     if isfield(reply,'error')
-                        replyError = char(string(reply.error));
+                        replyError = app.jsonValueToText(reply.error);
                     end
                     success = false;
                     errMsg = ['abort_photo_stim error: ',replyError];
@@ -1061,11 +1061,11 @@ classdef bvGUI < matlab.apps.AppBase
                         return;
                     end
 
-                    replyStatus = char(string(reply.status));
+                    replyStatus = app.jsonValueToText(reply.status);
                     if strcmp(replyStatus,'error')
                         replyError = 'Unknown check_idle error';
                         if isfield(reply,'error')
-                            replyError = char(string(reply.error));
+                            replyError = app.jsonValueToText(reply.error);
                         end
                         success = false;
                         errMsg = ['check_idle error: ',replyError];
@@ -1085,7 +1085,7 @@ classdef bvGUI < matlab.apps.AppBase
                     if isIdle
                         idleReason = '';
                         if isfield(reply,'reason')
-                            idleReason = char(string(reply.reason));
+                            idleReason = app.jsonValueToText(reply.reason);
                         end
                         if isempty(idleReason)
                             app.debugMessage('Photostim reported idle.');
@@ -1103,7 +1103,7 @@ classdef bvGUI < matlab.apps.AppBase
 
                     nextPollDelay = pollInterval;
                     if isfield(reply,'expected_idle_after_s')
-                        expectedIdleAfter = str2double(char(string(reply.expected_idle_after_s)));
+                        expectedIdleAfter = app.jsonValueToDouble(reply.expected_idle_after_s);
                         if ~isnan(expectedIdleAfter) && isfinite(expectedIdleAfter) && expectedIdleAfter > 0
                             nextPollDelay = expectedIdleAfter + 0.05;
                             app.debugMessage(['Waiting for opto_2p to completed (expected in ',num2str(expectedIdleAfter),' secs)']);
@@ -1263,6 +1263,53 @@ classdef bvGUI < matlab.apps.AppBase
                 fprintf(1,'RAW_REPLY_BEGIN\n%s\nRAW_REPLY_END\n', rawResponseText);
                 fprintf(1,'CLEAN_REPLY_BEGIN\n%s\nCLEAN_REPLY_END\n', responseText);
                 success = false;
+            end
+        end
+
+        function textValue = jsonValueToText(app, rawValue)
+            if isstring(rawValue)
+                textValue = char(join(rawValue, ", "));
+            elseif ischar(rawValue)
+                textValue = rawValue;
+            elseif isnumeric(rawValue) || islogical(rawValue)
+                if isscalar(rawValue)
+                    textValue = num2str(rawValue);
+                else
+                    textValue = strjoin(arrayfun(@num2str, rawValue(:)', 'UniformOutput', false), ', ');
+                end
+            elseif iscell(rawValue)
+                textValue = strjoin(cellfun(@(x) app.jsonValueToText(x), rawValue, 'UniformOutput', false), ', ');
+            else
+                try
+                    textValue = char(string(rawValue));
+                catch
+                    textValue = char(jsonencode(rawValue));
+                end
+            end
+        end
+
+        function textValues = jsonValueToTextCell(app, rawValue)
+            if iscell(rawValue)
+                textValues = cellfun(@(x) app.jsonValueToText(x), rawValue, 'UniformOutput', false);
+            elseif isstring(rawValue)
+                textValues = cellstr(rawValue(:));
+            elseif ischar(rawValue)
+                textValues = {rawValue};
+            elseif isnumeric(rawValue) || islogical(rawValue)
+                textValues = arrayfun(@num2str, rawValue(:)', 'UniformOutput', false);
+            else
+                textValues = {app.jsonValueToText(rawValue)};
+            end
+        end
+
+        function numericValue = jsonValueToDouble(app, rawValue)
+            if isnumeric(rawValue) || islogical(rawValue)
+                numericValue = double(rawValue);
+                if ~isscalar(numericValue)
+                    numericValue = numericValue(1);
+                end
+            else
+                numericValue = str2double(app.jsonValueToText(rawValue));
             end
         end
 
@@ -1684,11 +1731,11 @@ classdef bvGUI < matlab.apps.AppBase
             if response == 1
                 app.debugMessage('Make data folder command succeeded.');
             elseif response == -1
-                app.debugMessage(['Make data folder command failed. host=', char(bv_address), ' port=', num2str(bv_udp_port), ' cmd=', char(msg), ' detail=', char(string(responseDetail))]);
+                app.debugMessage(['Make data folder command failed. host=', char(bv_address), ' port=', num2str(bv_udp_port), ' cmd=', char(msg), ' detail=', app.jsonValueToText(responseDetail)]);
                 app.restoreRunButton();
                 return;
             else
-                app.debugMessage(['Unexpected server response while creating data folder. detail=', char(string(responseDetail))]);
+                app.debugMessage(['Unexpected server response while creating data folder. detail=', app.jsonValueToText(responseDetail)]);
                 app.restoreRunButton();
                 return;
             end         
@@ -2260,10 +2307,10 @@ classdef bvGUI < matlab.apps.AppBase
                 if response == 1
                     app.debugMessage('sync Command succeeded.');
                 elseif response == -1
-                    app.debugMessage(['sync Command failed. host=', char(bv_udp_server), ' port=', num2str(bv_udp_port), ' cmd=', char(msg), ' detail=', char(string(responseDetail))]);
+                    app.debugMessage(['sync Command failed. host=', char(bv_udp_server), ' port=', num2str(bv_udp_port), ' cmd=', char(msg), ' detail=', app.jsonValueToText(responseDetail)]);
                     return;
                 else
-                    app.debugMessage(['Unexpected server response: ', char(string(responseDetail))]);
+                    app.debugMessage(['Unexpected server response: ', app.jsonValueToText(responseDetail)]);
                     return;
                 end
 
