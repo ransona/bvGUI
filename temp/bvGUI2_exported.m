@@ -123,6 +123,22 @@ classdef bvGUI < matlab.apps.AppBase
             
         end
 
+        function [success, detail] = send_udp_command_no_reply(app, server, port, msg)
+            success = true;
+            detail = '';
+            udpSocket = [];
+
+            try
+                udpSocket = app.createUdpSocket(5);
+                app.writeUdpPayload(udpSocket, server, port, msg);
+            catch err
+                success = false;
+                detail = err.message;
+            end
+
+            app.cleanupUdpSocket(udpSocket);
+        end
+
         function repoRoot = getRepoRoot(app)
             appPath = which(class(app));
             if isempty(appPath)
@@ -1874,6 +1890,7 @@ classdef bvGUI < matlab.apps.AppBase
             daqEnabled = app.UITable_DAQs.Data.enabled;
 
             startDir = cd;
+            err_msg = '';
             cd(config.daqStartDir);
             app.debugMessage('Attempting to start all DAQs');
             for iDaq = 1:length(daqList)
@@ -1900,7 +1917,7 @@ classdef bvGUI < matlab.apps.AppBase
                             if daqEnabled(iDaqStop)
                                 app.debugMessage(['Stopping ',daqList{iDaqStop}]);
                                 try
-                                    [success,resp_msg] = eval(daqList{iDaqStop}(1:end-2));
+                                    [success,resp_msg] = eval([daqList{iDaqStop}(1:end-2),'(expID)']);
                                 catch daqStopErr
                                     success = false;
                                     resp_msg = daqStopErr.message;
@@ -2314,27 +2331,6 @@ classdef bvGUI < matlab.apps.AppBase
                     drawnow limitrate;
                 end
                 
-                % request BV computer to copy data to server
-                bv_udp_server = bv_address;
-                bv_udp_port = 64645;
-                remote_path_python = strcat(remotePath,'\',animalID,'\',expID);
-                remote_path_python = strrep(remote_path_python,'\','/');          
-                msg = "sync" + " " + bvSavePath + " "  + remote_path_python;
-                
-                app.debugMessage(['Sending sync command to ',char(bv_udp_server),':',num2str(bv_udp_port),' and waiting up to 120s for a reply']);
-                [response, responseDetail] = app.send_udp_command(bv_udp_server, bv_udp_port, msg, 120);
-                if response == 1
-                    app.debugMessage('sync Command succeeded.');
-                elseif response == -1
-                    app.debugMessage(['sync Command failed. host=', char(bv_udp_server), ' port=', num2str(bv_udp_port), ' cmd=', char(msg), ' detail=', app.jsonValueToText(responseDetail)]);
-                    return;
-                else
-                    app.debugMessage(['Unexpected server response: ', app.jsonValueToText(responseDetail)]);
-                    return;
-                end
-
-                %u.delete;
-
                 % save experiment data
                 expDat.expID = expID;
                 expDat.stimOrder = completeStimSeq(1:iTrial);
@@ -2353,13 +2349,22 @@ classdef bvGUI < matlab.apps.AppBase
             daqList = {daqList.name}';
             cd(config.daqStopDir);
             for iDaqStop = length(daqList):-1:1
-                err_msg = '';
                 if daqEnabled(iDaqStop)
                     app.debugMessage(['Stopping ',daqList{iDaqStop}]);
-                    [success,resp_msg] = eval(daqList{iDaqStop}(1:end-2));
+                    try
+                        [success,resp_msg] = eval([daqList{iDaqStop}(1:end-2),'(expID)']);
+                    catch daqStopErr
+                        success = false;
+                        resp_msg = daqStopErr.message;
+                    end
                     if ~success
                         app.debugMessage(['Error stopping ',daqList{iDaqStop}]);
-                        err_msg = [err_msg,'; ', ['Error stopping ',daqList{iDaqStop}]];
+                        if ~isempty(resp_msg)
+                            app.debugMessage(['Stop error detail for ',daqList{iDaqStop},': ',resp_msg]);
+                            err_msg = [err_msg,'; ', ['Error stopping ',daqList{iDaqStop},': ',resp_msg]];
+                        else
+                            err_msg = [err_msg,'; ', ['Error stopping ',daqList{iDaqStop}]];
+                        end
                     else
                         % app.debugMessage('OK');
                     end
@@ -2371,6 +2376,20 @@ classdef bvGUI < matlab.apps.AppBase
             [success, abortPhotoStimErr] = app.abortOpto2p(config);
             if ~success
                 app.debugMessage(abortPhotoStimErr);
+            end
+
+            % request BV computer to copy data to server after local cleanup
+            bv_udp_server = bv_address;
+            bv_udp_port = 64645;
+            remote_path_python = strcat(remotePath,'\',animalID,'\',expID);
+            remote_path_python = strrep(remote_path_python,'\','/');          
+            msg = "sync" + " " + bvSavePath + " "  + remote_path_python;
+            app.debugMessage(['Dispatching sync command to ',char(bv_udp_server),':',num2str(bv_udp_port),' without waiting for a reply']);
+            [syncDispatched, syncDetail] = app.send_udp_command_no_reply(bv_udp_server, bv_udp_port, msg);
+            if syncDispatched
+                app.debugMessage('sync Command dispatched.');
+            else
+                app.debugMessage(['sync Command dispatch failed. host=', char(bv_udp_server), ' port=', num2str(bv_udp_port), ' cmd=', char(msg), ' detail=', app.jsonValueToText(syncDetail)]);
             end
 
             debugMessage(app,['Experiment complete - ',expID]);
