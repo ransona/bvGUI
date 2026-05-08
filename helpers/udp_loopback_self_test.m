@@ -119,7 +119,8 @@ function message = wait_for_message(portObj, timeoutSeconds)
     end
 
     data = read(portObj, 1, "uint8");
-    message = string(char(uint8(data(:)')));
+    data = normalize_udp_read_data(data);
+    message = string(char(data));
 end
 
 function cleanup_port(portObj)
@@ -131,4 +132,24 @@ function cleanup_port(portObj)
         clear portObj;
     catch
     end
+end
+
+function payloadBytes = normalize_udp_read_data(rawData)
+    if isobject(rawData)
+        if isprop(rawData, 'Data')
+            rawData = rawData.Data;
+        elseif numel(rawData) == 1
+            try
+                rawData = rawData.Data;
+            catch
+                error('Unsupported udpport datagram object returned by read().');
+            end
+        else
+            error('Unsupported multi-datagram object returned by read().');
+        end
+    elseif isstruct(rawData) && isfield(rawData, 'Data')
+        rawData = rawData.Data;
+    end
+
+    payloadBytes = uint8(rawData(:)');
 end

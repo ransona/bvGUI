@@ -246,7 +246,7 @@ classdef UDPqML < handle
                 if isempty(dataIn)
                     return;
                 end
-                dataIn = uint8(dataIn(:)');
+                dataIn = obj.normalizeUdpReadData(dataIn);
 
                 dataInDeserialised = hlp_deserialize(uint8(dataIn));
                 if isstruct(dataInDeserialised)
@@ -264,6 +264,26 @@ classdef UDPqML < handle
                     end
                 end
             end
+        end
+
+        function payloadBytes = normalizeUdpReadData(obj, rawData)
+            if isobject(rawData)
+                if isprop(rawData, 'Data')
+                    rawData = rawData.Data;
+                elseif numel(rawData) == 1
+                    try
+                        rawData = rawData.Data;
+                    catch
+                        error('Unsupported udpport datagram object returned by read().');
+                    end
+                else
+                    error('Unsupported multi-datagram object returned by read().');
+                end
+            elseif isstruct(rawData) && isfield(rawData, 'Data')
+                rawData = rawData.Data;
+            end
+
+            payloadBytes = uint8(rawData(:)');
         end
     end
 end

@@ -1177,7 +1177,27 @@ classdef bvGUI < matlab.apps.AppBase
 
         function response = readSingleUdpDatagram(app, udpSocket)
             response = read(udpSocket, 1, 'uint8');
-            response = uint8(response(:)');
+            response = app.normalizeUdpReadData(response);
+        end
+
+        function payloadBytes = normalizeUdpReadData(app, rawData)
+            if isobject(rawData)
+                if isprop(rawData, 'Data')
+                    rawData = rawData.Data;
+                elseif numel(rawData) == 1
+                    try
+                        rawData = rawData.Data;
+                    catch
+                        error('Unsupported udpport datagram object returned by read().');
+                    end
+                else
+                    error('Unsupported multi-datagram object returned by read().');
+                end
+            elseif isstruct(rawData) && isfield(rawData, 'Data')
+                rawData = rawData.Data;
+            end
+
+            payloadBytes = uint8(rawData(:)');
         end
 
         function cleanupUdpSocket(app, udpSocket)
