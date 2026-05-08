@@ -1240,6 +1240,11 @@ classdef bvGUI < matlab.apps.AppBase
             reply = struct();
             success = false;
             rawResponseText = native2unicode(uint8(response)','UTF-8');
+            if isstring(rawResponseText)
+                rawResponseText = char(rawResponseText);
+            elseif ~ischar(rawResponseText)
+                rawResponseText = char(rawResponseText);
+            end
             responseText = strtrim(rawResponseText);
 
             try
