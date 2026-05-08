@@ -75,9 +75,10 @@ classdef bvGUI < matlab.apps.AppBase
             end
         end        
       
-        function [result, detail] = send_udp_command(app, server, port, msg)
-            % Define the timeout period in seconds (10 minutes)
-            timeoutPeriod = 600;
+        function [result, detail] = send_udp_command(app, server, port, msg, timeoutPeriod)
+            if nargin < 5 || isempty(timeoutPeriod)
+                timeoutPeriod = 30;
+            end
             udpSocket = [];
             detail = '';
         
@@ -96,7 +97,9 @@ classdef bvGUI < matlab.apps.AppBase
         
                 % Read and process the response
                 responseStr = char(response(:)');
-                responseStr = regexprep(responseStr, '[\x00-\x1F]+', '');
+                responseChars = double(responseStr);
+                keepMask = responseChars >= 32 | responseChars == 9 | responseChars == 10 | responseChars == 13;
+                responseStr = responseStr(keepMask);
                 responseStr = strtrim(responseStr);
                 detail = responseStr;
                 
@@ -1742,7 +1745,7 @@ classdef bvGUI < matlab.apps.AppBase
             bv_address = app.BVServerEditField.Value;
             bv_udp_port = 64645;
             msg = "mkdir" + " " + bvSavePath;
-            [response, responseDetail] = app.send_udp_command(bv_address, bv_udp_port, msg);
+            [response, responseDetail] = app.send_udp_command(bv_address, bv_udp_port, msg, 30);
             if response == 1
                 app.debugMessage('Make data folder command succeeded.');
             elseif response == -1
@@ -2318,7 +2321,8 @@ classdef bvGUI < matlab.apps.AppBase
                 remote_path_python = strrep(remote_path_python,'\','/');          
                 msg = "sync" + " " + bvSavePath + " "  + remote_path_python;
                 
-                [response, responseDetail] = app.send_udp_command(bv_udp_server, bv_udp_port, msg);
+                app.debugMessage(['Sending sync command to ',char(bv_udp_server),':',num2str(bv_udp_port),' and waiting up to 120s for a reply']);
+                [response, responseDetail] = app.send_udp_command(bv_udp_server, bv_udp_port, msg, 120);
                 if response == 1
                     app.debugMessage('sync Command succeeded.');
                 elseif response == -1
