@@ -93,7 +93,9 @@ classdef bvGUI < matlab.apps.AppBase
                 end
         
                 % Read and process the response
-                responseStr = char(response');
+                responseStr = char(response(:)');
+                responseStr = regexprep(responseStr, '[\x00-\x1F]+', '');
+                responseStr = strtrim(responseStr);
                 
                 % Check the server response and return success or failure
                 if strcmp(responseStr, '1')
