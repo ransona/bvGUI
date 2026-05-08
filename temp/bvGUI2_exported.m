@@ -75,10 +75,11 @@ classdef bvGUI < matlab.apps.AppBase
             end
         end        
       
-        function result = send_udp_command(app, server, port, msg)
+        function [result, detail] = send_udp_command(app, server, port, msg)
             % Define the timeout period in seconds (10 minutes)
             timeoutPeriod = 600;
             udpSocket = [];
+            detail = '';
         
             try
                 udpSocket = app.createUdpSocket(timeoutPeriod);
@@ -89,6 +90,7 @@ classdef bvGUI < matlab.apps.AppBase
                 response = app.waitForUdpBytes(udpSocket, timeoutPeriod, false);
                 if isempty(response)
                     result = -1; % Timeout reached, return failure
+                    detail = 'Timed out waiting for UDP reply.';
                     return;
                 end
         
@@ -96,6 +98,7 @@ classdef bvGUI < matlab.apps.AppBase
                 responseStr = char(response(:)');
                 responseStr = regexprep(responseStr, '[\x00-\x1F]+', '');
                 responseStr = strtrim(responseStr);
+                detail = responseStr;
                 
                 % Check the server response and return success or failure
                 if strcmp(responseStr, '1')
@@ -104,10 +107,12 @@ classdef bvGUI < matlab.apps.AppBase
                     result = -1; % Failure
                 else
                     result = -1; % Unexpected response
+                    detail = ['Unexpected reply: ', responseStr];
                 end
-            catch
+            catch err
                 % If an error occurs, return failure
                 result = -1;
+                detail = err.message;
             end
         
             % Close the UDP socket
@@ -1643,15 +1648,15 @@ classdef bvGUI < matlab.apps.AppBase
             bv_address = app.BVServerEditField.Value;
             bv_udp_port = 64645;
             msg = "mkdir" + " " + bvSavePath;
-            response = app.send_udp_command(bv_address, bv_udp_port, msg);
+            [response, responseDetail] = app.send_udp_command(bv_address, bv_udp_port, msg);
             if response == 1
                 app.debugMessage('Make data folder command succeeded.');
             elseif response == -1
-                app.debugMessage('Make data folder command  failed.');
+                app.debugMessage(['Make data folder command failed. host=', char(bv_address), ' port=', num2str(bv_udp_port), ' cmd=', char(msg), ' detail=', char(string(responseDetail))]);
                 app.restoreRunButton();
                 return;
             else
-                app.debugMessage('Unexpected server response while creating data folder.');
+                app.debugMessage(['Unexpected server response while creating data folder. detail=', char(string(responseDetail))]);
                 app.restoreRunButton();
                 return;
             end         
@@ -2219,14 +2224,14 @@ classdef bvGUI < matlab.apps.AppBase
                 remote_path_python = strrep(remote_path_python,'\','/');          
                 msg = "sync" + " " + bvSavePath + " "  + remote_path_python;
                 
-                response = app.send_udp_command(bv_udp_server, bv_udp_port, msg);
+                [response, responseDetail] = app.send_udp_command(bv_udp_server, bv_udp_port, msg);
                 if response == 1
                     app.debugMessage('sync Command succeeded.');
                 elseif response == -1
-                    app.debugMessage('sync Command failed.');
+                    app.debugMessage(['sync Command failed. host=', char(bv_udp_server), ' port=', num2str(bv_udp_port), ' cmd=', char(msg), ' detail=', char(string(responseDetail))]);
                     return;
                 else
-                    app.debugMessage(['Unexpected server response: ', responseStr]);
+                    app.debugMessage(['Unexpected server response: ', char(string(responseDetail))]);
                     return;
                 end
 
