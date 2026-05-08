@@ -111,15 +111,15 @@ end
 
 function message = wait_for_message(portObj, timeoutSeconds)
     startTime = tic;
-    while portObj.NumBytesAvailable == 0
+    while portObj.NumDatagramsAvailable == 0
         if toc(startTime) > timeoutSeconds
             error('Timed out waiting for UDP datagram.');
         end
         pause(0.01);
     end
 
-    data = read(portObj, portObj.NumBytesAvailable, "uint8");
-    message = string(char(data(:)'));
+    data = read(portObj, 1, "uint8");
+    message = string(char(uint8(data(:)')));
 end
 
 function cleanup_port(portObj)

@@ -241,11 +241,12 @@ classdef UDPqML < handle
                 return;
             end
 
-            while obj.udpObject.NumBytesAvailable > 0
-                dataIn = read(obj.udpObject, obj.udpObject.NumBytesAvailable, 'uint8');
+            while obj.udpObject.NumDatagramsAvailable > 0
+                dataIn = read(obj.udpObject, 1, 'uint8');
                 if isempty(dataIn)
                     return;
                 end
+                dataIn = uint8(dataIn(:)');
 
                 dataInDeserialised = hlp_deserialize(uint8(dataIn));
                 if isstruct(dataInDeserialised)

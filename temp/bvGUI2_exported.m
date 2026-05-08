@@ -1162,7 +1162,7 @@ classdef bvGUI < matlab.apps.AppBase
 
             response = [];
             startTime = tic;
-            while udpSocket.NumBytesAvailable == 0
+            while udpSocket.NumDatagramsAvailable == 0
                 if toc(startTime) > timeoutPeriod
                     return;
                 end
@@ -1172,7 +1172,12 @@ classdef bvGUI < matlab.apps.AppBase
                 pause(0.05);
             end
 
-            response = read(udpSocket, udpSocket.NumBytesAvailable, 'uint8');
+            response = app.readSingleUdpDatagram(udpSocket);
+        end
+
+        function response = readSingleUdpDatagram(app, udpSocket)
+            response = read(udpSocket, 1, 'uint8');
+            response = uint8(response(:)');
         end
 
         function cleanupUdpSocket(app, udpSocket)
