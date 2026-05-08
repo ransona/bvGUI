@@ -104,7 +104,7 @@ classdef bvGUI < matlab.apps.AppBase
                 detail = responseStr;
                 
                 % Check the server response and return success or failure
-                if strcmp(responseStr, '1')
+                if strcmp(responseStr, '1') || strcmpi(responseStr, 'OK')
                     result = 1; % Success
                 elseif strcmp(responseStr, '-1')
                     result = -1; % Failure
