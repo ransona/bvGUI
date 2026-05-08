@@ -562,10 +562,12 @@ classdef bvGUI < matlab.apps.AppBase
                     return;
                 end
 
+                app.debugMessage(['update_experiment_params reply.status class: ',class(reply.status)]);
                 replyStatus = app.jsonValueToText(reply.status);
                 if strcmp(replyStatus,'error')
                     replyError = 'Unknown update_experiment_params error';
                     if isfield(reply,'error')
+                        app.debugMessage(['update_experiment_params reply.error class: ',class(reply.error)]);
                         replyError = app.jsonValueToText(reply.error);
                     end
                     success = false;
@@ -582,6 +584,9 @@ classdef bvGUI < matlab.apps.AppBase
             catch err
                 success = false;
                 errMsg = ['update_experiment_params failed: ',err.message];
+                for iStack = 1:numel(err.stack)
+                    app.debugMessage(['update_experiment_params stack ',num2str(iStack),': ',err.stack(iStack).name,' line ',num2str(err.stack(iStack).line)]);
+                end
             end
         end
 
@@ -1281,9 +1286,9 @@ classdef bvGUI < matlab.apps.AppBase
                 textValue = strjoin(cellfun(@(x) app.jsonValueToText(x), rawValue, 'UniformOutput', false), ', ');
             else
                 try
-                    textValue = char(string(rawValue));
-                catch
                     textValue = char(jsonencode(rawValue));
+                catch
+                    textValue = strtrim(evalc('disp(rawValue)'));
                 end
             end
         end
