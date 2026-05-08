@@ -84,7 +84,7 @@ classdef bvGUI < matlab.apps.AppBase
             try
                 udpSocket = app.createUdpSocket(timeoutPeriod);
                 % Send the provided message
-                app.writeUdpPayload(udpSocket, server, port, uint8(msg));
+                app.writeUdpPayload(udpSocket, server, port, msg);
         
                 % Wait for the response
                 response = app.waitForUdpBytes(udpSocket, timeoutPeriod, false);
@@ -1145,7 +1145,14 @@ classdef bvGUI < matlab.apps.AppBase
         end
 
         function writeUdpPayload(app, udpSocket, remoteHost, remotePort, payloadBytes)
-            write(udpSocket, uint8(payloadBytes), "uint8", remoteHost, remotePort);
+            if isstring(payloadBytes)
+                payloadBytes = unicode2native(char(payloadBytes), 'UTF-8');
+            elseif ischar(payloadBytes)
+                payloadBytes = unicode2native(payloadBytes, 'UTF-8');
+            else
+                payloadBytes = uint8(payloadBytes);
+            end
+            write(udpSocket, payloadBytes, "uint8", remoteHost, remotePort);
         end
 
         function response = waitForUdpBytes(app, udpSocket, timeoutPeriod, processEvents)
