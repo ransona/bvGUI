@@ -8,54 +8,45 @@ classdef UDPqML < handle
     % 'DAT' - data such as stim properties.
     % 'OK'  - a confirmation of data received.
     % 'COM' - a command.
-    
+
     properties
         %% UDP stuff
-        udpObject;
-        lastData=[];
+        udpObject = [];
+        remoteHost = '';
+        remotePort = [];
+        localPort = [];
+        isOpen = false;
+        lastData = [];
         lastPulledData = [];
         debugMode = 1;
-        cleanupObj = [];
     end
-    
+
     methods
-        function obj=UDPqML(remoteHost,remotePort,localPort)
+        function obj = UDPqML(remoteHost, remotePort, localPort)
             % constructor
-            % setup UDP stuff
-            obj.debugMessage(('Starting UDP object'));
-            obj.udpObject = udp(remoteHost,'RemotePort',remotePort,'LocalPort',localPort);
-            obj.udpObject.DatagramReceivedFcn = @obj.DatagramReceivedFcn;
-            obj.udpObject.InputBufferSize = 2^13;
-            obj.udpObject.OutputBufferSize = 2^13;
-            
-            obj.cleanupObj = onCleanup(@obj.delete);
-            
-            obj.open;
+            obj.debugMessage('Starting UDP object');
+            obj.remoteHost = remoteHost;
+            obj.remotePort = remotePort;
+            obj.localPort = localPort;
+            obj.open();
         end
-        
-        function debugMessage(obj,debugString)
+
+        function debugMessage(obj, debugString)
             if obj.debugMode
                 disp(debugString);
             end
-        end     
-        
+        end
+
         function delete(obj)
             % destructor
-            warning('off','all');
-            obj.debugMessage(('Deleting UDP object'));
-            if strcmp(obj.udpObject.status,'open')
-                fclose(obj.udpObject);
-            end
-            % unbind all port instruments
-%             u=instrfindall('RemotePort',obj.udpObject.RemotePort,...
-%                            'RemoteHost',obj.udpObject.RemoteHost);
-%             delete(u);
-            delete('obj.udpObject');
-            clear('obj.udpObject');
-            warning('on','all');
+            warning('off', 'all');
+            obj.debugMessage('Deleting UDP object');
+            obj.closeConnection();
+            warning('on', 'all');
         end
-        
+
         function nextData = pull(obj)
+            obj.pollIncoming();
             if ~isempty(obj.lastData)
                 nextData = obj.lastData;
                 obj.lastPulledData = obj.lastData;
@@ -64,242 +55,214 @@ classdef UDPqML < handle
                 nextData = [];
             end
         end
-        
-        function [success, nextData] = waitForData(obj,timeout)
+
+        function [success, nextData] = waitForData(obj, timeout)
             startTime = tic;
-            obj.debugMessage(('Awaiting data'));
+            obj.debugMessage('Awaiting data');
             while isempty(obj.lastData)
+                obj.pollIncoming();
                 drawnow;
-                if (toc(startTime))>timeout
-                    % timed out
-                    obj.debugMessage(('Timed out'));
+                if toc(startTime) > timeout
+                    obj.debugMessage('Timed out');
                     success = 0;
                     nextData = [];
+                    return;
                 end
             end
-            % new data has arrived
-            obj.debugMessage(('Data arrived'));
-            nextData = obj.pull;
+
+            obj.debugMessage('Data arrived');
+            nextData = obj.pull();
             success = 1;
         end
-        
+
         function empty(obj)
-            obj.queuedCmds = [];
-            obj.queuedData = [];
+            obj.lastData = [];
+            obj.lastPulledData = [];
         end
-        
-        function DatagramReceivedFcn(obj,~,datagram)
-            % read data
-            dataIn = fread(obj.udpObject);
-            % deserialise data into a matlab struct
-            dataInDeserialised = hlp_deserialize(dataIn);
-            dataInDeserialised.origin = datagram.Data.DatagramAddress;
-            obj.lastData = dataInDeserialised;
-            obj.debugMessage(('Data received'));
-            if dataInDeserialised.confirm == 1
-                % send a confirmation back
-                obj.debugMessage(('Sending confirmation'));
-                obj.send([],'OK',0,dataInDeserialised.confirmID);
-            end
-        end
-        
-        function confirmed = awaitConfirm(obj,timeout,confirmID)
+
+        function confirmed = awaitConfirm(obj, timeout, confirmID)
             startTime = tic;
-            obj.debugMessage(('Awaiting confirmation'));
-            while(toc(startTime)<timeout)
-                % check if confirmation message has come through
-                pulledData = obj.pull;
-                if ~isempty(pulledData)
-                    if strcmp(pulledData.messageType,'OK')
-                        % confirmation received
-                        % check the ID is correct
-                        if pulledData.confirmID == confirmID
-                            % then confirmation is received
-                            confirmed = 1;
-                            obj.debugMessage(('Confirmation received'));
-                            return;
-                        else
-                            obj.debugMessage(('Confirmation received BUT wrong ID to disregarding - something is going wrong!'));
-                        end
+            obj.debugMessage('Awaiting confirmation');
+            while toc(startTime) < timeout
+                obj.pollIncoming();
+                pulledData = obj.pull();
+                if ~isempty(pulledData) && isfield(pulledData, 'messageType') && strcmp(pulledData.messageType, 'OK')
+                    if pulledData.confirmID == confirmID
+                        confirmed = 1;
+                        obj.debugMessage('Confirmation received');
+                        return;
+                    else
+                        obj.debugMessage('Confirmation received BUT wrong ID to disregarding - something is going wrong!');
                     end
                 end
+                drawnow;
+                pause(0.01);
             end
-            % if we get here then no suitable confirmation has come through
+
             confirmed = 0;
         end
-        
-        function ready = awaitReady(obj,timeout)
-            % waits for a server to send a "READY" command whic might be
-            % used for example to confirm that a DAQ has starts, i.e. not
-            % simply that the UDP command has been received.
+
+        function ready = awaitReady(obj, timeout)
+            % waits for a server to send a "READY" command which might be
+            % used for example to confirm that a DAQ has started.
             startTime = tic;
-            obj.debugMessage(('Awaiting ready confirmation'));
-            while(toc(startTime)<timeout)
-                % check if confirmation message has come through
+            obj.debugMessage('Awaiting ready confirmation');
+            while toc(startTime) < timeout
+                obj.pollIncoming();
                 drawnow;
-                pulledData = obj.pull;
-                if ~isempty(pulledData)
-                    if strcmp(pulledData.messageType,'COM')
-                        % command received
-                        if strcmp(pulledData.messageData,'READY')
-                            ready = 1;
-                            obj.debugMessage('Confirmation received');
-                            return;
-                        else
-                            disp('WARNING: Command missed while waiting for ready');
-                        end
+                pulledData = obj.pull();
+                if ~isempty(pulledData) && isfield(pulledData, 'messageType') && strcmp(pulledData.messageType, 'COM')
+                    if strcmp(pulledData.messageData, 'READY')
+                        ready = 1;
+                        obj.debugMessage('Confirmation received');
+                        return;
+                    else
+                        disp('WARNING: Command missed while waiting for ready');
                     end
                 end
+                pause(0.01);
             end
-            % if we get here then no suitable confirmation has come through
+
             ready = 0;
         end
-        
-        
+
         function open(obj)
-            % open connection
-            obj.debugMessage(('Opening connection'));
-            obj.openConnection
+            obj.debugMessage('Opening connection');
+            obj.openConnection();
         end
-        
-        function setRemote(obj,remoteHost,remotePort)
-            % closes any current connections and connects to a new remote host
-            obj.debugMessage(('Setting remote'));
-            if strcmp(obj.udpObject.status,'open')
-                % close connection
-                fclose(obj.udpObject);
+
+        function setRemote(obj, remoteHost, remotePort)
+            obj.debugMessage('Setting remote');
+            obj.remoteHost = remoteHost;
+            obj.remotePort = remotePort;
+            if obj.isOpen
+                obj.closeConnection();
+                obj.openConnection();
             end
-            obj.udpObject.remoteHost = remoteHost;
-            obj.udpObject.remotePort = remotePort;
-            
-            % open connection
-            obj.openConnection
         end
-        
-        function setLocalPort(obj,localPort)
-            % closes any current connections and connects to a new remote host
-            obj.debugMessage(('Setting local port'));
-            if strcmp(obj.udpObject.status,'open')
-                % close connection
-                fclose(obj.udpObject);
+
+        function setLocalPort(obj, localPort)
+            obj.debugMessage('Setting local port');
+            obj.localPort = localPort;
+            if obj.isOpen
+                obj.closeConnection();
+                obj.openConnection();
             end
-            
-            obj.udpObject.localPort = localPort;
-            
-            % open connection
-            obj.openConnection
         end
-        
+
         function openConnection(obj)
             % opens connection using current configuration
             try
-                % unbind port
-                preRemotePort = obj.udpObject.RemotePort;
-                preRemoteHost = obj.udpObject.RemoteHost;
-                preLocalPort  = obj.udpObject.LocalPort ;
-                
-                obj.udpObject.RemotePort = 1;
-                obj.udpObject.RemoteHost = '';
-                obj.udpObject.LocalPort  = 1;
-                
-                
-                u=instrfindall('RemotePort',preRemotePort,...
-                               'RemoteHost',preRemoteHost);
-                if length(u)>0
-                    delete(u);
-                    disp('Warning: port was bound when tried to open, so closed');
-                end
-                
-                obj.udpObject.RemotePor = preRemotePort;
-                obj.udpObject.RemoteHost = preRemoteHost;
-                obj.udpObject.LocalPort = preLocalPort;
-                % obj.udpObject.EnablePortSharing = 'on';
-                fopen(obj.udpObject);
-                
+                obj.closeConnection();
+                obj.udpObject = udpport("datagram", "IPV4", "LocalPort", obj.localPort);
+                obj.udpObject.Timeout = 30;
+                obj.isOpen = true;
             catch
+                obj.isOpen = false;
                 disp('Failed to open UDP connection');
             end
         end
-        
+
         function closeConnection(obj)
             % closes connection using current configuration
-            obj.debugMessage(('Closing connection'));
-            try
-                fclose(obj.udpObject);
-            catch
-                disp('Failed to close UDP connection');
+            obj.debugMessage('Closing connection');
+            if isempty(obj.udpObject)
+                obj.isOpen = false;
+                return;
             end
+
+            try
+                configureCallback(obj.udpObject, "off");
+            catch
+            end
+
+            try
+                clear obj.udpObject;
+            catch
+            end
+
+            obj.udpObject = [];
+            obj.isOpen = false;
         end
 
-        function success = send(obj,messageData,messageType,confirm,confirmID,remoteHost,remotePort)
+        function success = send(obj, messageData, messageType, confirm, confirmID, remoteHost, remotePort)
             % for sending strings (i.e. not matlab structs)
-            obj.debugMessage('Sending UPD');
-            if exist('remoteHost','var') && exist('remotePort','var')
-                % then close any existing connection and connect to new
-                % remote host
-                obj.setRemote(remoteHost,remotePort);
+            obj.debugMessage('Sending UDP');
+            if exist('remoteHost', 'var') && exist('remotePort', 'var')
+                obj.setRemote(remoteHost, remotePort);
             end
-            
-            % if connection is closed then open connection
-            if strcmp(obj.udpObject.status,'closed')
-                % open connection
-                obj.openConnection
+
+            if ~obj.isOpen || isempty(obj.udpObject)
+                obj.openConnection();
             end
-            
+
             % convert the message from matlab struct to uint8
             messageStruct.messageData = messageData;
             messageStruct.messageType = messageType;
-            
+
             % if the message type is a "COM" (command) parse into the
-            % command itself and it's arguments
-            if strcmp(messageStruct.messageType,'COM')
-                % then parse
-                messageData=strsplit(messageData,'*');
+            % command itself and its arguments
+            if strcmp(messageStruct.messageType, 'COM')
+                messageData = strsplit(messageData, '*');
                 messageStruct.messageData = messageData{1};
-                if length(messageData)>2
+                if length(messageData) > 2
                     messageStruct.meta = messageData(2:end);
-                elseif length(messageData)>1
-                    messageStruct.meta        = messageData(2);
+                elseif length(messageData) > 1
+                    messageStruct.meta = messageData(2);
                 end
             end
-            
-            if exist('confirm','var')
+
+            if exist('confirm', 'var')
                 messageStruct.confirm = confirm;
-                if exist('confirmID','var')
-                    % confirmation ID has been passed in
+                if exist('confirmID', 'var')
                     messageStruct.confirmID = confirmID;
-                    obj.debugMessage((['Confirmation ID: ',num2str(messageStruct.confirmID)]));
+                    obj.debugMessage(['Confirmation ID: ', num2str(messageStruct.confirmID)]);
                 else
-                    % generate random confirmation ID
-                    messageStruct.confirmID = round(rand*10^6);
-                    obj.debugMessage((['Confirmation ID: ',num2str(messageStruct.confirmID)]));
+                    messageStruct.confirmID = round(rand * 10^6);
+                    obj.debugMessage(['Confirmation ID: ', num2str(messageStruct.confirmID)]);
                 end
-                
             else
                 messageStruct.confirm = 0;
             end
-            
+
             messageStructSerial = hlp_serialize(messageStruct);
-            
-            % send message
-            fwrite(obj.udpObject,messageStructSerial,'uint8');
-            
-            if exist('confirm','var')
-                if confirm == 1
-                    % wait for confirmation message to come through
-                    timeout = 30; % secs
-                    success = obj.awaitConfirm(timeout,messageStruct.confirmID);
-                else
-                    % just send message into ether
-                    success = 1;
-                end
+            write(obj.udpObject, uint8(messageStructSerial), "uint8", obj.remoteHost, obj.remotePort);
+
+            if exist('confirm', 'var') && confirm == 1
+                timeout = 30; % secs
+                success = obj.awaitConfirm(timeout, messageStruct.confirmID);
             else
                 success = 1;
             end
-            
         end
-        
-    end
-    
-end
 
+        function pollIncoming(obj)
+            if ~obj.isOpen || isempty(obj.udpObject)
+                return;
+            end
+
+            while obj.udpObject.NumBytesAvailable > 0
+                dataIn = read(obj.udpObject, obj.udpObject.NumBytesAvailable, 'uint8');
+                if isempty(dataIn)
+                    return;
+                end
+
+                dataInDeserialised = hlp_deserialize(uint8(dataIn));
+                if isstruct(dataInDeserialised)
+                    dataInDeserialised.origin = '';
+                end
+                obj.lastData = dataInDeserialised;
+                obj.debugMessage('Data received');
+
+                if isstruct(dataInDeserialised) && isfield(dataInDeserialised, 'confirm') && dataInDeserialised.confirm == 1
+                    obj.debugMessage('Sending confirmation');
+                    if isfield(dataInDeserialised, 'confirmID')
+                        obj.send([], 'OK', 0, dataInDeserialised.confirmID);
+                    else
+                        obj.send([], 'OK', 0);
+                    end
+                end
+            end
+        end
+    end
+end

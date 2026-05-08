@@ -78,28 +78,21 @@ classdef bvGUI < matlab.apps.AppBase
         function result = send_udp_command(app, server, port, msg)
             % Define the timeout period in seconds (10 minutes)
             timeoutPeriod = 600;
-        
-            % Create the UDP socket
-            udpSocket = udp(server, port);
-            fopen(udpSocket);
+            udpSocket = [];
         
             try
+                udpSocket = app.createUdpSocket(timeoutPeriod);
                 % Send the provided message
-                fwrite(udpSocket, msg);
+                app.writeUdpPayload(udpSocket, server, port, uint8(msg));
         
                 % Wait for the response
-                startTime = tic; % Start timer
-                while udpSocket.BytesAvailable == 0
-                    elapsedTime = toc(startTime);
-                    if elapsedTime > timeoutPeriod
-                        result = -1; % Timeout reached, return failure
-                        return;
-                    end
-                    pause(0.1); % Short pause to avoid busy waiting
+                response = app.waitForUdpBytes(udpSocket, timeoutPeriod, false);
+                if isempty(response)
+                    result = -1; % Timeout reached, return failure
+                    return;
                 end
         
                 % Read and process the response
-                response = fread(udpSocket, udpSocket.BytesAvailable);
                 responseStr = char(response');
                 
                 % Check the server response and return success or failure
@@ -116,9 +109,7 @@ classdef bvGUI < matlab.apps.AppBase
             end
         
             % Close the UDP socket
-            fclose(udpSocket);
-            delete(udpSocket);
-            clear udpSocket;
+            app.cleanupUdpSocket(udpSocket);
             
         end
 
@@ -524,16 +515,11 @@ classdef bvGUI < matlab.apps.AppBase
                 return;
             end
 
-            udpSocket = [];
             timeoutPeriod = 600;
             replyWaitPeriod = 1;
 
             try
-                udpSocket = udp(config.opto2pListener, config.opto2pPort);
-                udpSocket.Timeout = timeoutPeriod;
-                udpSocket.InputBufferSize = 65535;
-                udpSocket.OutputBufferSize = 65535;
-                fopen(udpSocket);
+                udpSocket = app.createUdpSocket(timeoutPeriod);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
                 payload = struct( ...
@@ -544,23 +530,13 @@ classdef bvGUI < matlab.apps.AppBase
                 jsonPayload = jsonencode(payload);
                 fprintf(1,'UPDATE_EXPERIMENT_PARAMS_JSON_BEGIN\n%s\nUPDATE_EXPERIMENT_PARAMS_JSON_END\n', jsonPayload);
                 app.debugMessage(['Sending update_experiment_params for ',num2str(numel(stimulusConditions)),' stimulus conditions via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
-                fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+                app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
 
-                startTime = tic;
-                while udpSocket.BytesAvailable == 0
-                    if toc(startTime) > replyWaitPeriod
-                        app.debugMessage('No update_experiment_params reply received; continuing.');
-                        return;
-                    end
-                    if toc(startTime) > timeoutPeriod
-                        app.debugMessage('No update_experiment_params reply received; continuing.');
-                        return;
-                    end
-                    drawnow limitrate;
-                    pause(0.1);
+                response = app.waitForUdpBytes(udpSocket, replyWaitPeriod, true);
+                if isempty(response)
+                    app.debugMessage('No update_experiment_params reply received; continuing.');
+                    return;
                 end
-
-                response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                 if ~decodedOk
                     success = false;
@@ -617,15 +593,10 @@ classdef bvGUI < matlab.apps.AppBase
                 return;
             end
 
-            udpSocket = [];
             timeoutPeriod = 600;
 
             try
-                udpSocket = udp(config.opto2pListener, config.opto2pPort);
-                udpSocket.Timeout = timeoutPeriod;
-                udpSocket.InputBufferSize = 65535;
-                udpSocket.OutputBufferSize = 65535;
-                fopen(udpSocket);
+                udpSocket = app.createUdpSocket(timeoutPeriod);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
                 payload = struct( ...
@@ -633,20 +604,14 @@ classdef bvGUI < matlab.apps.AppBase
                     'trial_index', trialIndex);
                 jsonPayload = jsonencode(payload);
                 app.debugMessage(['Sending start_trial index ',num2str(trialIndex),' via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
-                fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+                app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
 
-                startTime = tic;
-                while udpSocket.BytesAvailable == 0
-                    if toc(startTime) > timeoutPeriod
-                        success = false;
-                        errMsg = ['Timed out waiting for start_trial confirmation for index ',num2str(trialIndex)];
-                        return;
-                    end
-                    drawnow limitrate;
-                    pause(0.1);
+                response = app.waitForUdpBytes(udpSocket, timeoutPeriod, true);
+                if isempty(response)
+                    success = false;
+                    errMsg = ['Timed out waiting for start_trial confirmation for index ',num2str(trialIndex)];
+                    return;
                 end
-
-                response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                 if ~decodedOk
                     success = false;
@@ -751,14 +716,9 @@ classdef bvGUI < matlab.apps.AppBase
 
             app.debugMessage('Computing masks');
 
-            udpSocket = [];
             timeoutPeriod = 600;
             try
-                udpSocket = udp(config.opto2pListener, config.opto2pPort);
-                udpSocket.Timeout = timeoutPeriod;
-                udpSocket.InputBufferSize = 65535;
-                udpSocket.OutputBufferSize = 65535;
-                fopen(udpSocket);
+                udpSocket = app.createUdpSocket(timeoutPeriod);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
                 payload = struct( ...
@@ -769,20 +729,14 @@ classdef bvGUI < matlab.apps.AppBase
                 jsonPayload = jsonencode(payload);
                 seqNumSummary = strjoin(cellstr(string(prepData.seqNums)),', ');
                 app.debugMessage(['Preparing opto_2p masks for seq_nums [',seqNumSummary,'] via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
-                fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+                app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
 
-                startTime = tic;
-                while udpSocket.BytesAvailable == 0
-                    if toc(startTime) > timeoutPeriod
-                        success = false;
-                        errMsg = ['Timed out waiting for opto_2p confirmation for seq_nums [',seqNumSummary,']'];
-                        return;
-                    end
-                    drawnow limitrate;
-                    pause(0.1);
+                response = app.waitForUdpBytes(udpSocket, timeoutPeriod, true);
+                if isempty(response)
+                    success = false;
+                    errMsg = ['Timed out waiting for opto_2p confirmation for seq_nums [',seqNumSummary,']'];
+                    return;
                 end
-
-                response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                 if ~decodedOk
                     success = false;
@@ -878,15 +832,10 @@ classdef bvGUI < matlab.apps.AppBase
                 return;
             end
 
-            udpSocket = [];
             timeoutPeriod = 600;
 
             try
-                udpSocket = udp(config.opto2pListener, config.opto2pPort);
-                udpSocket.Timeout = timeoutPeriod;
-                udpSocket.InputBufferSize = 65535;
-                udpSocket.OutputBufferSize = 65535;
-                fopen(udpSocket);
+                udpSocket = app.createUdpSocket(timeoutPeriod);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
                 payload = struct( ...
@@ -896,20 +845,14 @@ classdef bvGUI < matlab.apps.AppBase
                     'seq_num', trialData.seqNum);
                 jsonPayload = jsonencode(payload);
                 app.debugMessage(['Triggering opto_2p for seq_num ',num2str(trialData.seqNum),' via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
-                fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+                app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
 
-                startTime = tic;
-                while udpSocket.BytesAvailable == 0
-                    if toc(startTime) > timeoutPeriod
-                        success = false;
-                        errMsg = ['Timed out waiting for opto_2p trigger confirmation for seq_num ',num2str(trialData.seqNum)];
-                        return;
-                    end
-                    drawnow limitrate;
-                    pause(0.1);
+                response = app.waitForUdpBytes(udpSocket, timeoutPeriod, true);
+                if isempty(response)
+                    success = false;
+                    errMsg = ['Timed out waiting for opto_2p trigger confirmation for seq_num ',num2str(trialData.seqNum)];
+                    return;
                 end
-
-                response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                 if ~decodedOk
                     success = false;
@@ -1002,34 +945,23 @@ classdef bvGUI < matlab.apps.AppBase
                 return;
             end
 
-            udpSocket = [];
             timeoutPeriod = 600;
 
             try
-                udpSocket = udp(config.opto2pListener, config.opto2pPort);
-                udpSocket.Timeout = timeoutPeriod;
-                udpSocket.InputBufferSize = 65535;
-                udpSocket.OutputBufferSize = 65535;
-                fopen(udpSocket);
+                udpSocket = app.createUdpSocket(timeoutPeriod);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
                 payload = struct('action', 'abort_photo_stim');
                 jsonPayload = jsonencode(payload);
                 app.debugMessage(['Sending abort_photo_stim via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
-                fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+                app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
 
-                startTime = tic;
-                while udpSocket.BytesAvailable == 0
-                    if toc(startTime) > timeoutPeriod
-                        success = false;
-                        errMsg = 'Timed out waiting for abort_photo_stim confirmation.';
-                        return;
-                    end
-                    drawnow limitrate;
-                    pause(0.1);
+                response = app.waitForUdpBytes(udpSocket, timeoutPeriod, true);
+                if isempty(response)
+                    success = false;
+                    errMsg = 'Timed out waiting for abort_photo_stim confirmation.';
+                    return;
                 end
-
-                response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                 if ~decodedOk
                     success = false;
@@ -1083,37 +1015,27 @@ classdef bvGUI < matlab.apps.AppBase
                 return;
             end
 
-            udpSocket = [];
             timeoutPeriod = 600;
             pollInterval = 0.25;
             startTime = tic;
             app.debugMessage('Check photostimulation completed');
 
             try
-                udpSocket = udp(config.opto2pListener, config.opto2pPort);
-                udpSocket.Timeout = timeoutPeriod;
-                udpSocket.InputBufferSize = 65535;
-                udpSocket.OutputBufferSize = 65535;
-                fopen(udpSocket);
+                udpSocket = app.createUdpSocket(timeoutPeriod);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
                 while true
                     payload = struct('action', 'check_idle');
                     jsonPayload = jsonencode(payload);
-                    fwrite(udpSocket, unicode2native(jsonPayload,'UTF-8'), 'uint8');
+                    app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
 
-                    responseWaitStart = tic;
-                    while udpSocket.BytesAvailable == 0
-                        if toc(responseWaitStart) > timeoutPeriod || toc(startTime) > timeoutPeriod
-                            success = false;
-                            errMsg = 'Timed out waiting for check_idle confirmation.';
-                            return;
-                        end
-                        drawnow limitrate;
-                        pause(0.05);
+                    remainingTimeout = max(timeoutPeriod - toc(startTime), 0);
+                    response = app.waitForUdpBytes(udpSocket, remainingTimeout, true);
+                    if isempty(response)
+                        success = false;
+                        errMsg = 'Timed out waiting for check_idle confirmation.';
+                        return;
                     end
-
-                    response = fread(udpSocket, udpSocket.BytesAvailable, 'uint8');
                     [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
                     if ~decodedOk
                         success = false;
@@ -1206,16 +1128,49 @@ classdef bvGUI < matlab.apps.AppBase
             end
         end
 
+        function udpSocket = createUdpSocket(app, timeoutPeriod, localPort)
+            if nargin < 4 || isempty(localPort)
+                udpSocket = udpport("datagram", "IPV4");
+            else
+                udpSocket = udpport("datagram", "IPV4", "LocalPort", localPort);
+            end
+            udpSocket.Timeout = timeoutPeriod;
+        end
+
+        function writeUdpPayload(app, udpSocket, remoteHost, remotePort, payloadBytes)
+            write(udpSocket, uint8(payloadBytes), "uint8", remoteHost, remotePort);
+        end
+
+        function response = waitForUdpBytes(app, udpSocket, timeoutPeriod, processEvents)
+            if nargin < 5
+                processEvents = true;
+            end
+
+            response = [];
+            startTime = tic;
+            while udpSocket.NumBytesAvailable == 0
+                if toc(startTime) > timeoutPeriod
+                    return;
+                end
+                if processEvents
+                    drawnow limitrate;
+                end
+                pause(0.05);
+            end
+
+            response = read(udpSocket, udpSocket.NumBytesAvailable, 'uint8');
+        end
+
         function cleanupUdpSocket(app, udpSocket)
             if isempty(udpSocket)
                 return;
             end
             try
-                fclose(udpSocket);
+                configureCallback(udpSocket, "off");
             catch
             end
             try
-                delete(udpSocket);
+                clear udpSocket;
             catch
             end
         end
@@ -2099,13 +2054,9 @@ classdef bvGUI < matlab.apps.AppBase
                                 arduino_ip = '158.109.210.169';  % Replace with your Arduino's IP address
                                 arduino_port = 8888;  % Replace with your Arduino's port number
                                 
-                                % Create a UDP object
-                                u_opto = udp(arduino_ip, arduino_port);
-                                % Set a timeout for the socket operations (e.g., 5 seconds)
+                                % Create a UDP port using the modern MATLAB interface.
+                                u_opto = udpport("datagram", "IPV4");
                                 u_opto.Timeout = 5;
-                                
-                                % Open the connection
-                                fopen(u_opto);
                                 
                                 try
                                     % Message format: D,Fs,L,DC                                
@@ -2114,11 +2065,11 @@ classdef bvGUI < matlab.apps.AppBase
                                 
                                     % Send message
                                     fprintf('Sending message to Arduino UDP server: %s\n', msg_str);
-                                    fwrite(u_opto, message, 'uint8');
+                                    write(u_opto, message, 'uint8', arduino_ip, arduino_port);
                                 
                                     % Attempt to receive a response within the timeout period
                                     try
-                                        data = fread(u_opto, u_opto.BytesAvailable, 'uint8');
+                                        data = app.waitForUdpBytes(u_opto, u_opto.Timeout, false);
                                         fprintf('Received: %s\n', char(data)');
                                     catch
                                         % Handle the timeout case
@@ -2130,9 +2081,7 @@ classdef bvGUI < matlab.apps.AppBase
                                 
                                 % Clean up
                                 fprintf('Closing socket\n');
-                                fclose(u_opto);
-                                delete(u_opto);
-                                clear u_opto
+                                app.cleanupUdpSocket(u_opto);
                                 end
                         end
 
