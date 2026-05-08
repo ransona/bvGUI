@@ -1254,7 +1254,9 @@ classdef bvGUI < matlab.apps.AppBase
             catch
             end
 
-            responseText = regexprep(rawResponseText,'[\x00-\x1F]+','');
+            responseChars = double(rawResponseText);
+            keepMask = responseChars >= 32 | responseChars == 9 | responseChars == 10 | responseChars == 13;
+            responseText = rawResponseText(keepMask);
             responseText = strtrim(responseText);
 
             firstBrace = find(responseText == '{', 1, 'first');
