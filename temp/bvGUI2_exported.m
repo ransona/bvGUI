@@ -139,6 +139,32 @@ classdef bvGUI < matlab.apps.AppBase
             app.cleanupUdpSocket(udpSocket);
         end
 
+        function [result, detail] = send_udp_command_with_prompt(app, server, port, msg, initialTimeout, promptTitle)
+            if nargin < 6 || isempty(promptTitle)
+                promptTitle = 'UDP wait';
+            end
+
+            waitTimeout = initialTimeout;
+            while true
+                [result, detail] = app.send_udp_command(server, port, msg, waitTimeout);
+                if result == 1
+                    return;
+                end
+
+                if strcmp(detail, 'Timed out waiting for UDP reply.')
+                    choice = questdlg( ...
+                        ['No UDP reply received after ',num2str(waitTimeout),' seconds. Keep waiting?'], ...
+                        promptTitle, ...
+                        'Keep waiting', 'Stop waiting', 'Stop waiting');
+                    if strcmp(choice, 'Keep waiting')
+                        waitTimeout = 30;
+                        continue;
+                    end
+                end
+                return;
+            end
+        end
+
         function repoRoot = getRepoRoot(app)
             appPath = which(class(app));
             if isempty(appPath)
@@ -2384,12 +2410,14 @@ classdef bvGUI < matlab.apps.AppBase
             remote_path_python = strcat(remotePath,'\',animalID,'\',expID);
             remote_path_python = strrep(remote_path_python,'\','/');          
             msg = "sync" + " " + bvSavePath + " "  + remote_path_python;
-            app.debugMessage(['Dispatching sync command to ',char(bv_udp_server),':',num2str(bv_udp_port),' without waiting for a reply']);
-            [syncDispatched, syncDetail] = app.send_udp_command_no_reply(bv_udp_server, bv_udp_port, msg);
-            if syncDispatched
-                app.debugMessage('sync Command dispatched.');
+            app.debugMessage(['Sending sync command to ',char(bv_udp_server),':',num2str(bv_udp_port),' and waiting up to 30s for a reply']);
+            [syncDispatched, syncDetail] = app.send_udp_command_with_prompt(bv_udp_server, bv_udp_port, msg, 30, 'Bonvision sync');
+            if syncDispatched == 1
+                app.debugMessage('sync Command succeeded.');
+            elseif strcmp(syncDetail, 'Timed out waiting for UDP reply.')
+                app.debugMessage(['sync Command timed out. host=', char(bv_udp_server), ' port=', num2str(bv_udp_port), ' cmd=', char(msg)]);
             else
-                app.debugMessage(['sync Command dispatch failed. host=', char(bv_udp_server), ' port=', num2str(bv_udp_port), ' cmd=', char(msg), ' detail=', app.jsonValueToText(syncDetail)]);
+                app.debugMessage(['sync Command failed. host=', char(bv_udp_server), ' port=', num2str(bv_udp_port), ' cmd=', char(msg), ' detail=', app.jsonValueToText(syncDetail)]);
             end
 
             debugMessage(app,['Experiment complete - ',expID]);
