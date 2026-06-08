@@ -13,7 +13,8 @@ function expData = build_bvgui_config_from_opto_schema(schemaPath, outputPath, s
 % schemaPath named <schemaName>_bvgui.mat.
 
     if nargin < 1 || isempty(schemaPath)
-        [fileName, filePath] = uigetfile({'*.yaml;*.yml', 'Opto schema YAML (*.yaml, *.yml)'}, 'Select opto schema');
+        defaultSchemaDir = '\\AR-LAB-NAS1\DataServer\opto_schemas';
+        [fileName, filePath] = uigetfile({'schema.yaml;schema.yml;*.yaml;*.yml', 'Opto schema YAML (*.yaml, *.yml)'}, 'Select opto schema', defaultSchemaDir);
         if isequal(fileName, 0)
             expData = [];
             return;

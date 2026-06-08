@@ -40,6 +40,7 @@ classdef bvGUI < matlab.apps.AppBase
         Openvalve1Button               matlab.ui.control.Button
         NewFeatureListBoxLabel_2       matlab.ui.control.Label
         NewButton                      matlab.ui.control.Button
+        ImportSchemaButton             matlab.ui.control.Button
         RunButton                      matlab.ui.control.Button
         SaveButton                     matlab.ui.control.Button
         LoadButton                     matlab.ui.control.Button
@@ -1457,6 +1458,23 @@ classdef bvGUI < matlab.apps.AppBase
             %       end
         end
 
+        function schemaDir = getDefaultOptoSchemaDir(app)
+            schemaDir = '\\AR-LAB-NAS1\DataServer\opto_schemas';
+        end
+
+        function loadExperimentDataIntoGui(app, expData, stimFilename)
+            global bvData;
+            app.ensureBvDataInitialized();
+            bvData.expData = expData;
+            if nargin >= 3
+                bvData.stim_filename = stimFilename;
+            end
+            app.StimulusListBox.Tag = '';
+            app.FeatureListBox.Tag = '';
+            app.FeatureListBox.Value = {};
+            app.bvUpdateGUI;
+        end
+
         function saveForPython(app,expDat,expID,save_path)
             Folder = save_path;
             % Folder = 'G:\.shortcut-targets-by-id\1P7g8LSE5D6vInT7OOXY1EIzJ0M4zvhos\Remote_Repository\TEST\2023-02-27_09_TEST';
@@ -1738,12 +1756,32 @@ classdef bvGUI < matlab.apps.AppBase
             app.UIFigure.Visible = 'on';
             if exist('expData')
                 [~,bvData.stim_filename,~] = fileparts(file);
-                bvData.expData = expData;
-                app.StimulusListBox.Tag = '';
-                app.FeatureListBox.Tag = '';
-                app.FeatureListBox.Value = {};
-                app.bvUpdateGUI;
+                app.loadExperimentDataIntoGui(expData, bvData.stim_filename);
             end
+        end
+
+        % Button pushed function: ImportSchemaButton
+        function ImportSchemaButtonPushed(app, event)
+            schemaDir = app.getDefaultOptoSchemaDir();
+            [file,path] = uigetfile({'schema.yaml;schema.yml;*.yaml;*.yml', 'Opto schema YAML (*.yaml, *.yml)'}, 'Select opto schema', schemaDir);
+            figure(app.UIFigure);
+            app.UIFigure.Visible = 'on';
+            if isequal(file,0)
+                return
+            end
+
+            schemaPath = fullfile(path,file);
+            try
+                expData = build_bvgui_config_from_opto_schema(schemaPath);
+            catch err
+                app.debugMessage(['Schema import failed: ',err.message]);
+                return
+            end
+
+            schemaFolder = fileparts(schemaPath);
+            [~,schemaName] = fileparts(schemaFolder);
+            app.loadExperimentDataIntoGui(expData, [schemaName,'_bvgui']);
+            app.debugMessage(['Imported opto schema ',schemaName,' with ',num2str(length(expData.stims)),' stimulus/stimuli']);
         end
 
         % Button pushed function: RunButton
@@ -3052,6 +3090,12 @@ classdef bvGUI < matlab.apps.AppBase
             app.NewButton.ButtonPushedFcn = createCallbackFcn(app, @NewButtonPushed, true);
             app.NewButton.Position = [297 637 100 22];
             app.NewButton.Text = 'New';
+
+            % Create ImportSchemaButton
+            app.ImportSchemaButton = uibutton(app.UIFigure, 'push');
+            app.ImportSchemaButton.ButtonPushedFcn = createCallbackFcn(app, @ImportSchemaButtonPushed, true);
+            app.ImportSchemaButton.Position = [629 637 120 22];
+            app.ImportSchemaButton.Text = 'Import schema';
 
             % Create NewFeatureListBoxLabel_2
             app.NewFeatureListBoxLabel_2 = uilabel(app.UIFigure);
