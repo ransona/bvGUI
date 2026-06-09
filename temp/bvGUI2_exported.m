@@ -553,9 +553,12 @@ classdef bvGUI < matlab.apps.AppBase
             end
         end
 
-        function [success, errMsg] = sendExperimentParams(app, config, expID, stimulusConditions, trialConditionIndices)
+        function [success, errMsg] = sendExperimentParams(app, config, expID, stimulusConditions, trialConditionIndices, jsonDumpDir)
             success = true;
             errMsg = '';
+            if nargin < 6
+                jsonDumpDir = '';
+            end
 
             if isempty(config.opto2pListener)
                 success = false;
@@ -575,13 +578,34 @@ classdef bvGUI < matlab.apps.AppBase
                 udpSocket = app.createUdpSocket(timeoutPeriod);
                 udpCleaner = onCleanup(@() app.cleanupUdpSocket(udpSocket)); %#ok<NASGU>
 
-                payload = struct( ...
-                    'action', 'update_experiment_params', ...
-                    'expID', expID);
-                payload.stimulus_conditions = stimulusConditions;
-                payload.trial_condition_indices = trialConditionIndices;
-                jsonPayload = jsonencode(payload);
-                fprintf(1,'UPDATE_EXPERIMENT_PARAMS_JSON_BEGIN\n%s\nUPDATE_EXPERIMENT_PARAMS_JSON_END\n', jsonPayload);
+                paramsPayload = struct('expID', expID);
+                paramsPayload.stimulus_conditions = stimulusConditions;
+                paramsPayload.trial_condition_indices = trialConditionIndices;
+                paramsJsonPayload = jsonencode(paramsPayload);
+                notificationPayload = struct('action', 'update_experiment_params', 'expID', expID);
+                notificationPayload.stimulus_conditions = stimulusConditions;
+                notificationPayload.trial_condition_indices = trialConditionIndices;
+                jsonPayload = jsonencode(notificationPayload);
+                if ~isempty(jsonDumpDir)
+                    jsonPath = fullfile(jsonDumpDir, [expID,'_update_experiment_params.json']);
+                    [fileId, fileErr] = fopen(jsonPath, 'w');
+                    if fileId < 0
+                        success = false;
+                        errMsg = ['Could not write update_experiment_params JSON to ',jsonPath,': ',fileErr];
+                        return;
+                    end
+                    fwrite(fileId, paramsJsonPayload, 'char');
+                    fwrite(fileId, newline, 'char');
+                    fclose(fileId);
+                    app.debugMessage(['Saved update_experiment_params JSON to ',jsonPath]);
+                    notificationPayload = struct( ...
+                        'action', 'update_experiment_params', ...
+                        'expID', expID, ...
+                        'params_path', jsonPath);
+                    jsonPayload = jsonencode(notificationPayload);
+                end
+                fprintf(1,'UPDATE_EXPERIMENT_PARAMS_JSON_BEGIN\n%s\nUPDATE_EXPERIMENT_PARAMS_JSON_END\n', paramsJsonPayload);
+                fprintf(1,'UPDATE_EXPERIMENT_PARAMS_UDP_JSON_BEGIN\n%s\nUPDATE_EXPERIMENT_PARAMS_UDP_JSON_END\n', jsonPayload);
                 app.debugMessage(['Sending update_experiment_params for ',num2str(numel(stimulusConditions)),' stimulus conditions via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
                 app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
 
@@ -1922,7 +1946,7 @@ classdef bvGUI < matlab.apps.AppBase
                 return;
             end
             trialConditionIndices = conditionIndexByStimIdx(completeStimSeq);
-            [success, updateParamsErr] = app.sendExperimentParams(config, expID, stimulusConditions, trialConditionIndices);
+            [success, updateParamsErr] = app.sendExperimentParams(config, expID, stimulusConditions, trialConditionIndices, expSavePath);
             if ~success
                 app.debugMessage(updateParamsErr);
                 app.restoreRunButton();
