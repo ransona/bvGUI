@@ -1911,6 +1911,15 @@ classdef bvGUI < matlab.apps.AppBase
             global bvData;
             config = app.getRepoConfig();
             remotePath = config.remoteSaveRoot;
+            animalIDInput = strtrim(app.AnimalIDEditField.Value);
+            if ~strcmp(animalIDInput,'TEST') && isempty(regexp(animalIDInput,'^ES[A-Z]{2}[0-9]{3}$','once'))
+                errMsg = ['Invalid animal ID: ',animalIDInput,'. Use TEST or ES followed by two capital letters and three numbers, e.g. ESAB123.'];
+                app.debugMessage(errMsg);
+                msgbox(errMsg,'Invalid animal ID','error');
+                app.restoreRunButton();
+                return;
+            end
+            app.AnimalIDEditField.Value = animalIDInput;
             % prompt before creating an expID or experiment folders
             [experimentDescription, experimentUser, metadataCancelled] = app.promptExperimentStartInfo(bvData.stim_filename);
             if metadataCancelled
@@ -1919,7 +1928,7 @@ classdef bvGUI < matlab.apps.AppBase
                 return;
             end
             % get a new unique animal ID
-            expID = newExpID(app.AnimalIDEditField.Value);
+            expID = newExpID(animalIDInput);
             animalID = expID(15:end);
             bvSavePath = fullfile(config.localSaveRoot,animalID,expID);
             bvSavePath = strrep(bvSavePath,'\','/');
