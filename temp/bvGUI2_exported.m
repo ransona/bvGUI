@@ -1499,6 +1499,60 @@ classdef bvGUI < matlab.apps.AppBase
             app.bvUpdateGUI;
         end
 
+        function [experimentDescription, experimentUser, cancelled] = promptExperimentStartInfo(app, defaultDescription)
+            users = {'adamranson','albertestop','joaoribeiros','rubencorreia','yannickbollmann'};
+            experimentDescription = '';
+            experimentUser = users{1};
+            cancelled = true;
+
+            dlg = dialog('Name','Experiment info','WindowStyle','modal','Position',[100 100 380 170]);
+            uicontrol('Parent',dlg,'Style','text','String','Description','HorizontalAlignment','left','Position',[20 120 100 20]);
+            descriptionEdit = uicontrol('Parent',dlg,'Style','edit','String',defaultDescription,'HorizontalAlignment','left','Position',[125 120 235 24]);
+            uicontrol('Parent',dlg,'Style','text','String','User','HorizontalAlignment','left','Position',[20 80 100 20]);
+            userPopup = uicontrol('Parent',dlg,'Style','popupmenu','String',users,'Position',[125 80 235 24]);
+            uicontrol('Parent',dlg,'Style','pushbutton','String','OK','Position',[185 25 80 28],'Callback',@okCallback);
+            uicontrol('Parent',dlg,'Style','pushbutton','String','Cancel','Position',[280 25 80 28],'Callback',@cancelCallback);
+            dlg.CloseRequestFcn = @cancelCallback;
+            uiwait(dlg);
+
+            function okCallback(~,~)
+                experimentDescription = char(descriptionEdit.String);
+                experimentUser = users{userPopup.Value};
+                cancelled = false;
+                delete(dlg);
+            end
+
+            function cancelCallback(~,~)
+                cancelled = true;
+                delete(dlg);
+            end
+        end
+
+        function [success, errMsg] = writeExperimentMetadata(app, expSavePath, expID, animalID, experimentUser, experimentDescription, stimFilename)
+            success = true;
+            errMsg = '';
+            metadata = struct( ...
+                'expID', expID, ...
+                'animalID', animalID, ...
+                'user', experimentUser, ...
+                'description', experimentDescription, ...
+                'stim_filename', stimFilename, ...
+                'remote_experiment_dir', expSavePath, ...
+                'created_at', char(datetime('now','TimeZone','local','Format','yyyy-MM-dd HH:mm:ss Z')));
+
+            metadataPath = fullfile(expSavePath, [expID,'_experiment_metadata.json']);
+            [fileId, fileErr] = fopen(metadataPath, 'w');
+            if fileId < 0
+                success = false;
+                errMsg = ['Could not write experiment metadata to ',metadataPath,': ',fileErr];
+                return;
+            end
+            fwrite(fileId, jsonencode(metadata), 'char');
+            fwrite(fileId, newline, 'char');
+            fclose(fileId);
+            app.debugMessage(['Saved experiment metadata to ',metadataPath]);
+        end
+
         function saveForPython(app,expDat,expID,save_path)
             Folder = save_path;
             % Folder = 'G:\.shortcut-targets-by-id\1P7g8LSE5D6vInT7OOXY1EIzJ0M4zvhos\Remote_Repository\TEST\2023-02-27_09_TEST';
@@ -1861,10 +1915,20 @@ classdef bvGUI < matlab.apps.AppBase
                 app.restoreRunButton();
                 return;
             end         
-            % clear the log box
-            % prompt for basic experiment comment
-            inp_text = inputdlg('Experiment type?','',1,{bvData.stim_filename});
-            app.ExperimentlogTextArea.Value = {datestr(datetime),expID,inp_text{1},''};
+            % clear the log box and prompt for basic experiment metadata
+            [experimentDescription, experimentUser, metadataCancelled] = app.promptExperimentStartInfo(bvData.stim_filename);
+            if metadataCancelled
+                app.debugMessage('Experiment start cancelled.');
+                app.restoreRunButton();
+                return;
+            end
+            app.ExperimentlogTextArea.Value = {datestr(datetime),expID,['User: ',experimentUser],experimentDescription,''};
+            [metadataSaved, metadataErr] = app.writeExperimentMetadata(expSavePath, expID, animalID, experimentUser, experimentDescription, bvData.stim_filename);
+            if ~metadataSaved
+                app.debugMessage(metadataErr);
+                app.restoreRunButton();
+                return;
+            end
 
             completeStimSeq = app.buildCompleteStimSeq();
             % make sure bonvision server is in idle state 158.109.215.49
