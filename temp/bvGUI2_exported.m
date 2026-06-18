@@ -1851,13 +1851,13 @@ classdef bvGUI < matlab.apps.AppBase
             global bvData;
             config = app.getRepoConfig();
             [file,path] = uigetfile(config.stimsetsDir);
-            if isempty(file)
+            if isequal(file,0)
                 return
             end
             load(fullfile(path,file));
             figure(app.UIFigure);
             app.UIFigure.Visible = 'on';
-            if exist('expData')
+            if exist('expData','var')
                 [~,bvData.stim_filename,~] = fileparts(file);
                 app.loadExperimentDataIntoGui(expData, bvData.stim_filename);
             end
