@@ -2880,22 +2880,6 @@ classdef bvGUI < matlab.apps.AppBase
                     end
                 end
 
-                % preload all video/image files
-                all_resources = [];
-                for iStim = 1:length(expDataEval)
-                    for iFeat = 1:length(expDataEval(iStim).features)
-                        % check if feature is a movie and if so add it as a resource
-                        if strcmp(expDataEval(iStim).features(iFeat).name{1},'movie')
-                            all_resources{end+1} = expDataEval(iStim).features(iFeat).vals{1};
-                        end
-                    end
-                end
-                all_resources = unique(all_resources);
-                for iRes = 1:length(all_resources)
-                    rig.resource(all_resources{iRes});
-                end
-                rig.preload();
-
                 [stimulusConditions, conditionIndexByStimIdx, conditionCatalogErr] = app.buildStimulusConditionCatalog(expDataEval, completeStimSeq);
                 if ~isempty(conditionCatalogErr)
                     app.debugMessage(conditionCatalogErr);
@@ -3023,7 +3007,35 @@ classdef bvGUI < matlab.apps.AppBase
                         app.debugMessage('Added default zero-contrast grating for opto_2p-only trial');
                         app.addDefaultBonvisionTriggerGrating(rig);
                     end
-                    % once all features are added
+                    % once all features are added, preload trial resources
+                    all_resources = [];
+                    for iFeat = 1:length(expDataEval(iStim).features)
+                        if strcmp(expDataEval(iStim).features(iFeat).name{1},'movie')
+                            all_resources{end+1} = expDataEval(iStim).features(iFeat).vals{1};
+                            debugMessage(app,['Added resource: ',expDataEval(iStim).features(iFeat).vals{1}]);
+                        end
+                    end
+                    all_resources = unique(all_resources);
+                    for iRes = 1:length(all_resources)
+                        rig.resource(all_resources{iRes});
+                    end
+
+                    if ~isempty(all_resources)
+                        debugMessage(app,'Preloading trial resources');
+                        drawnow
+                        tic
+                        rig.preload();
+                        load_time = toc;
+                        debugMessage(app,['Preload command returned ',num2str(load_time),' secs']);
+                        debugMessage(app,['Pausing ', app.PauseafterpreloadEditField.Value, ' secs more to ensure preload complete']);
+                        drawnow
+                        pauseTime = str2double(app.PauseafterpreloadEditField.Value);
+                        app.pauseWithEvents(pauseTime);
+                    else
+                        rig.preload();
+                        app.pauseWithEvents(0.5);
+                    end
+
                     % start trial
                     rig.start();
                     % wait for end of trial
