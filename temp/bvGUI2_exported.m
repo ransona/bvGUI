@@ -1516,6 +1516,7 @@ classdef bvGUI < matlab.apps.AppBase
             end
 
             dlg = dialog('Name','Experiment info','WindowStyle','modal','Position',[100 100 380 170]);
+            movegui(dlg,'center');
             uicontrol('Parent',dlg,'Style','text','String','Description','HorizontalAlignment','left','Position',[20 120 100 20]);
             descriptionEdit = uicontrol('Parent',dlg,'Style','edit','String',defaultDescription,'HorizontalAlignment','left','Position',[125 120 235 24]);
             uicontrol('Parent',dlg,'Style','text','String','User','HorizontalAlignment','left','Position',[20 80 100 20]);
