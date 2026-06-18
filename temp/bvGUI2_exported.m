@@ -561,13 +561,11 @@ classdef bvGUI < matlab.apps.AppBase
             end
 
             if isempty(config.opto2pListener)
-                success = false;
-                errMsg = ['Experiment params endpoint is not available on machine ',config.machineName,': network.opto_2p_listener is not configured.'];
+                app.debugMessage(['Opto server not configured on machine ',config.machineName,': network.opto_2p_listener is not configured; not sending trial info.']);
                 return;
             end
             if isnan(config.opto2pPort) || ~isfinite(config.opto2pPort) || config.opto2pPort <= 0
-                success = false;
-                errMsg = ['Experiment params endpoint is not available on machine ',config.machineName,': network.opto_2p_port is not configured.'];
+                app.debugMessage(['Opto server not configured on machine ',config.machineName,': network.opto_2p_port is not configured; not sending trial info.']);
                 return;
             end
 
