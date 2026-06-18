@@ -1295,6 +1295,12 @@ classdef bvGUI < matlab.apps.AppBase
                 app.SequenceRepeatsEditField.Value = '10';
             end
 
+            if isfield(bvData.expData,'pauseafterpreload')
+                app.PauseafterpreloadEditField.Value = bvData.expData.pauseafterpreload;
+            else
+                app.PauseafterpreloadEditField.Value = '5';
+            end
+
             % update list of stims
             app.StimulusListBox.Items = {};
             for iStim = 1:length(bvData.expData.stims)
@@ -1618,6 +1624,7 @@ classdef bvGUI < matlab.apps.AppBase
             expData.vars = app.VariablesEditField.Value;
             expData.iti = app.ITIEditField.Value;
             expData.seqreps = app.SequenceRepeatsEditField.Value;
+            expData.pauseafterpreload = app.PauseafterpreloadEditField.Value;
             uisave({'expData'},config.stimsetsDir);
             figure(app.UIFigure);
         end
