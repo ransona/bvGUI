@@ -1904,6 +1904,13 @@ classdef bvGUI < matlab.apps.AppBase
             global bvData;
             config = app.getRepoConfig();
             remotePath = config.remoteSaveRoot;
+            % prompt before creating an expID or experiment folders
+            [experimentDescription, experimentUser, metadataCancelled] = app.promptExperimentStartInfo(bvData.stim_filename);
+            if metadataCancelled
+                app.debugMessage('Experiment start cancelled.');
+                app.restoreRunButton();
+                return;
+            end
             % get a new unique animal ID
             expID = newExpID(app.AnimalIDEditField.Value);
             animalID = expID(15:end);
@@ -1933,13 +1940,7 @@ classdef bvGUI < matlab.apps.AppBase
                 app.restoreRunButton();
                 return;
             end         
-            % clear the log box and prompt for basic experiment metadata
-            [experimentDescription, experimentUser, metadataCancelled] = app.promptExperimentStartInfo(bvData.stim_filename);
-            if metadataCancelled
-                app.debugMessage('Experiment start cancelled.');
-                app.restoreRunButton();
-                return;
-            end
+            % clear the log box and save experiment metadata
             app.ExperimentlogTextArea.Value = {datestr(datetime),expID,['User: ',experimentUser],experimentDescription,''};
             [metadataSaved, metadataErr] = app.writeExperimentMetadata(expSavePath, expID, animalID, experimentUser, experimentDescription, bvData.stim_filename);
             if ~metadataSaved
