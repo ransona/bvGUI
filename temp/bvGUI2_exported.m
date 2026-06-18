@@ -61,6 +61,7 @@ classdef bvGUI < matlab.apps.AppBase
     properties (Access = public)
         abortFlag = 0; % Whether you want to abort if stimulus run is ongoing
         photoStimStarted = false; % Whether opto_2p photostimulation has been triggered in this run
+        lastExperimentUser = ''; % Last selected experiment user for this app session
     end
 
     methods (Access = private)
@@ -1500,14 +1501,25 @@ classdef bvGUI < matlab.apps.AppBase
         function [experimentDescription, experimentUser, cancelled] = promptExperimentStartInfo(app, defaultDescription)
             users = {'adamranson','albertestop','joaoribeiros','rubencorreia','yannickbollmann'};
             experimentDescription = '';
-            experimentUser = users{1};
+            experimentUser = '';
             cancelled = true;
+            if isempty(app.lastExperimentUser)
+                dropdownUsers = [{''}, users];
+                selectedUserIndex = 1;
+            else
+                dropdownUsers = users;
+                selectedUserIndex = find(strcmp(users, app.lastExperimentUser), 1);
+                if isempty(selectedUserIndex)
+                    dropdownUsers = [{''}, users];
+                    selectedUserIndex = 1;
+                end
+            end
 
             dlg = dialog('Name','Experiment info','WindowStyle','modal','Position',[100 100 380 170]);
             uicontrol('Parent',dlg,'Style','text','String','Description','HorizontalAlignment','left','Position',[20 120 100 20]);
             descriptionEdit = uicontrol('Parent',dlg,'Style','edit','String',defaultDescription,'HorizontalAlignment','left','Position',[125 120 235 24]);
             uicontrol('Parent',dlg,'Style','text','String','User','HorizontalAlignment','left','Position',[20 80 100 20]);
-            userPopup = uicontrol('Parent',dlg,'Style','popupmenu','String',users,'Position',[125 80 235 24]);
+            userPopup = uicontrol('Parent',dlg,'Style','popupmenu','String',dropdownUsers,'Value',selectedUserIndex,'Position',[125 80 235 24]);
             uicontrol('Parent',dlg,'Style','pushbutton','String','OK','Position',[185 25 80 28],'Callback',@okCallback);
             uicontrol('Parent',dlg,'Style','pushbutton','String','Cancel','Position',[280 25 80 28],'Callback',@cancelCallback);
             dlg.CloseRequestFcn = @cancelCallback;
@@ -1515,7 +1527,13 @@ classdef bvGUI < matlab.apps.AppBase
 
             function okCallback(~,~)
                 experimentDescription = char(descriptionEdit.String);
-                experimentUser = users{userPopup.Value};
+                selectedUser = dropdownUsers{userPopup.Value};
+                if isempty(strtrim(selectedUser))
+                    msgbox('Please select a user before starting the experiment.','User required','warn');
+                    return;
+                end
+                experimentUser = selectedUser;
+                app.lastExperimentUser = experimentUser;
                 cancelled = false;
                 delete(dlg);
             end
@@ -2495,10 +2513,16 @@ classdef bvGUI < matlab.apps.AppBase
             % Stop all DAQs
             app.debugMessage('Attempting to stop all DAQs');
             % attempt to stop all of the daqs in reverse
+            app.debugMessage(['DAQ stop dir: ',config.daqStopDir]);
+            app.debugMessage('Listing DAQ stop scripts...');
             daqList = dir(fullfile(config.daqStopDir,'*.m'));
             daqList = {daqList.name}';
+            app.debugMessage(['Found ',num2str(length(daqList)),' DAQ stop script(s).']);
+            app.debugMessage('Changing to DAQ stop dir...');
             cd(config.daqStopDir);
+            app.debugMessage('Changed to DAQ stop dir.');
             for iDaqStop = length(daqList):-1:1
+                app.debugMessage(['Checking DAQ stop script ',num2str(iDaqStop),'/',num2str(length(daqList)),': ',daqList{iDaqStop}]);
                 if daqEnabled(iDaqStop)
                     app.debugMessage(['Stopping ',daqList{iDaqStop}]);
                     try
@@ -2518,10 +2542,14 @@ classdef bvGUI < matlab.apps.AppBase
                     else
                         % app.debugMessage('OK');
                     end
+                else
+                    app.debugMessage(['Skipping disabled DAQ stop script ',daqList{iDaqStop}]);
                 end
             end
 
+            app.debugMessage(['Returning to start dir: ',startDir]);
             cd(startDir);
+            app.debugMessage('Returned to start dir.');
 
             [success, abortPhotoStimErr] = app.abortOpto2p(config);
             if ~success

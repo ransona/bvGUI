@@ -2293,11 +2293,17 @@ classdef bvGUI < matlab.apps.AppBase
             % Stop all DAQs
             app.debugMessage('Attempting to stop all DAQs');
             % attempt to stop all of the daqs in reverse
+            app.debugMessage(['DAQ stop dir: ',config.daqStopDir]);
+            app.debugMessage('Listing DAQ stop scripts...');
             daqList = dir(fullfile(config.daqStopDir,'*.m'));
             daqList = {daqList.name}';
+            app.debugMessage(['Found ',num2str(length(daqList)),' DAQ stop script(s).']);
+            app.debugMessage('Changing to DAQ stop dir...');
             cd(config.daqStopDir);
+            app.debugMessage('Changed to DAQ stop dir.');
             for iDaqStop = length(daqList):-1:1
                 err_msg = '';
+                app.debugMessage(['Checking DAQ stop script ',num2str(iDaqStop),'/',num2str(length(daqList)),': ',daqList{iDaqStop}]);
                 if daqEnabled(iDaqStop)
                     app.debugMessage(['Stopping ',daqList{iDaqStop}]);
                     [success,resp_msg] = eval(daqList{iDaqStop}(1:end-2));
@@ -2307,10 +2313,14 @@ classdef bvGUI < matlab.apps.AppBase
                     else
                         % app.debugMessage('OK');
                     end
+                else
+                    app.debugMessage(['Skipping disabled DAQ stop script ',daqList{iDaqStop}]);
                 end
             end
 
+            app.debugMessage(['Returning to start dir: ',startDir]);
             cd(startDir);
+            app.debugMessage('Returned to start dir.');
 
             [success, abortPhotoStimErr] = app.abortOpto2p(config);
             if ~success
