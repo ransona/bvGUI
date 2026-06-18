@@ -1515,7 +1515,7 @@ classdef bvGUI < matlab.apps.AppBase
                 end
             end
 
-            dlg = dialog('Name','Experiment info','WindowStyle','modal','Position',[100 100 380 170]);
+            dlg = dialog('Name','Experiment info','WindowStyle','modal','Visible','off','Position',[100 100 380 170]);
             movegui(dlg,'center');
             uicontrol('Parent',dlg,'Style','text','String','Description','HorizontalAlignment','left','Position',[20 120 100 20]);
             descriptionEdit = uicontrol('Parent',dlg,'Style','edit','String',defaultDescription,'HorizontalAlignment','left','Position',[125 120 235 24]);
@@ -1524,6 +1524,7 @@ classdef bvGUI < matlab.apps.AppBase
             uicontrol('Parent',dlg,'Style','pushbutton','String','OK','Position',[185 25 80 28],'Callback',@okCallback);
             uicontrol('Parent',dlg,'Style','pushbutton','String','Cancel','Position',[280 25 80 28],'Callback',@cancelCallback);
             dlg.CloseRequestFcn = @cancelCallback;
+            dlg.Visible = 'on';
             uiwait(dlg);
 
             function okCallback(~,~)
