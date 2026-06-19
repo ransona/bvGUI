@@ -1360,6 +1360,56 @@ classdef bvGUI < matlab.apps.AppBase
             %       end
         end
 
+        function [finalComment, discardExperiment] = promptFinalComment(app)
+            finalComment = '';
+            discardExperiment = false;
+
+            dlg = dialog('Name','Experiment complete','WindowStyle','modal','Visible','off','Position',[100 100 420 155]);
+            movegui(dlg,'center');
+            uicontrol('Parent',dlg,'Style','text','String','Final comments','HorizontalAlignment','left','Position',[20 105 100 20]);
+            commentEdit = uicontrol('Parent',dlg,'Style','edit','String','','HorizontalAlignment','left','Position',[125 105 275 24]);
+            uicontrol('Parent',dlg,'Style','pushbutton','String','Save','Position',[130 35 80 30],'Callback',@saveCallback);
+            uicontrol('Parent',dlg,'Style','pushbutton','String','Discard','Position',[220 35 80 30],'Callback',@discardCallback);
+            uicontrol('Parent',dlg,'Style','pushbutton','String','Cancel','Position',[310 35 80 30],'Callback',@cancelCallback);
+            dlg.CloseRequestFcn = @cancelCallback;
+            dlg.Visible = 'on';
+            uicontrol(commentEdit);
+            uiwait(dlg);
+
+            function saveCallback(~,~)
+                finalComment = char(commentEdit.String);
+                discardExperiment = strcmpi(strtrim(finalComment),'d');
+                delete(dlg);
+            end
+
+            function discardCallback(~,~)
+                confirmation = questdlg( ...
+                    'Mark this experiment for deletion?', ...
+                    'Confirm discard', ...
+                    'Discard','Keep experiment','Keep experiment');
+                if strcmp(confirmation,'Discard')
+                    finalComment = char(commentEdit.String);
+                    discardExperiment = true;
+                    delete(dlg);
+                end
+            end
+
+            function cancelCallback(~,~)
+                delete(dlg);
+            end
+        end
+
+        function markExperimentForDeletion(app, expSavePath)
+            markerPath = fullfile(expSavePath,'deleteme');
+            [fileId, fileErr] = fopen(markerPath,'w');
+            if fileId < 0
+                app.debugMessage(['Could not create discard marker ',markerPath,': ',fileErr]);
+                return;
+            end
+            fclose(fileId);
+            app.debugMessage(['Marked experiment for deletion: ',markerPath]);
+        end
+
         function saveForPython(app,expDat,expID,save_path)
             Folder = save_path;
             % Folder = 'G:\.shortcut-targets-by-id\1P7g8LSE5D6vInT7OOXY1EIzJ0M4zvhos\Remote_Repository\TEST\2023-02-27_09_TEST';
@@ -1877,11 +1927,14 @@ classdef bvGUI < matlab.apps.AppBase
                         % restore GUI elements so ready to start again
                         app.restoreRunButton();
                         debugMessage(app,'Experiment complete (with errors!)');
-                        inp_text = inputdlg('Final comments?');
+                        [inp_text, discardExperiment] = app.promptFinalComment();
+                        if discardExperiment
+                            app.markExperimentForDeletion(expSavePath);
+                        end
                         if strcmp(app.ExperimentlogTextArea.Value{end},'')
-                            app.ExperimentlogTextArea.Value{end} = inp_text{1};
+                            app.ExperimentlogTextArea.Value{end} = inp_text;
                         else
-                            app.ExperimentlogTextArea.Value{end+1} = inp_text{1};
+                            app.ExperimentlogTextArea.Value{end+1} = inp_text;
                         end
                         app.ExperimentlogTextArea.Value{end+1} = datestr(datetime);
                         % save log file
@@ -2344,11 +2397,14 @@ classdef bvGUI < matlab.apps.AppBase
             end
 
             debugMessage(app,['Experiment complete - ',expID]);
-            inp_text = inputdlg('Final comments?');
+            [inp_text, discardExperiment] = app.promptFinalComment();
+            if discardExperiment
+                app.markExperimentForDeletion(expSavePath);
+            end
             if strcmp(app.ExperimentlogTextArea.Value{end},'')
-                app.ExperimentlogTextArea.Value{end} = inp_text{1};
+                app.ExperimentlogTextArea.Value{end} = inp_text;
             else
-                app.ExperimentlogTextArea.Value{end+1} = inp_text{1};
+                app.ExperimentlogTextArea.Value{end+1} = inp_text;
             end
             app.ExperimentlogTextArea.Value{end+1} = datestr(datetime);
             % save log file
