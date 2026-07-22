@@ -62,6 +62,7 @@ classdef bvGUI < matlab.apps.AppBase
         abortFlag = 0; % Whether you want to abort if stimulus run is ongoing
         photoStimStarted = false; % Whether opto_2p photostimulation has been triggered in this run
         lastExperimentUser = ''; % Last selected experiment user for this app session
+        currentExperimentLogPath = ''; % Experiment-level log for the current session
     end
 
     methods (Access = private)
@@ -605,12 +606,22 @@ classdef bvGUI < matlab.apps.AppBase
                 end
                 fprintf(1,'UPDATE_EXPERIMENT_PARAMS_JSON_BEGIN\n%s\nUPDATE_EXPERIMENT_PARAMS_JSON_END\n', paramsJsonPayload);
                 fprintf(1,'UPDATE_EXPERIMENT_PARAMS_UDP_JSON_BEGIN\n%s\nUPDATE_EXPERIMENT_PARAMS_UDP_JSON_END\n', jsonPayload);
-                app.debugMessage(['Sending update_experiment_params for ',num2str(numel(stimulusConditions)),' stimulus conditions via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
-                app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
-
-                response = app.waitForUdpBytes(udpSocket, replyWaitPeriod, true);
+                maxAttempts = 3;
+                response = [];
+                for attempt = 1:maxAttempts
+                    app.debugMessage(['Sending update_experiment_params attempt ',num2str(attempt),'/',num2str(maxAttempts),' for ',num2str(numel(stimulusConditions)),' stimulus conditions via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
+                    app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
+                    response = app.waitForUdpBytes(udpSocket, replyWaitPeriod, true);
+                    if ~isempty(response)
+                        break;
+                    end
+                    if attempt < maxAttempts
+                        app.debugMessage('No update_experiment_params reply received; retrying.');
+                    end
+                end
                 if isempty(response)
-                    app.debugMessage('No update_experiment_params reply received; continuing.');
+                    success = false;
+                    errMsg = ['No update_experiment_params reply received from the Opto GUI at ',config.opto2pListener,':',num2str(config.opto2pPort),' after ',num2str(maxAttempts),' attempts. Check that the Opto GUI listener is active on UDP port 1813.'];
                     return;
                 end
                 [reply, responseText, decodedOk] = app.decodeUdpJsonReply(response);
@@ -1984,6 +1995,7 @@ classdef bvGUI < matlab.apps.AppBase
             bvSavePath = strrep(bvSavePath,'\','/');
             savePath = remotePath;
             expSavePath = fullfile(savePath,animalID,expID);
+            app.currentExperimentLogPath = fullfile(expSavePath,'exp_log.txt');
             if ~exist(expSavePath,'dir')
                 mkdir(expSavePath);
             end
@@ -2197,20 +2209,6 @@ classdef bvGUI < matlab.apps.AppBase
                         % append error msg to log
                         fprintf(f,formatSpec,err_msg);
                         fclose(f);
-
-                        % log to animal log file IF final comment was not x
-                        if ~strcmp(inp_text,'x')
-                            f2 = fopen(fullfile(savePath,animalID,'animal_log.txt'),'a');
-                            for i =1:length(value)
-                                fprintf(f2,formatSpec,value{i});
-                            end
-                            % append error msg to log
-                            fprintf(f2,formatSpec,err_msg);
-                            fprintf(f2,formatSpec,'======================');
-                            fprintf(f2,formatSpec,'======================');
-                            fprintf(f2,formatSpec,'======================');
-                            fclose(f2);
-                        end
 
                         return;
                     else
@@ -2666,20 +2664,6 @@ classdef bvGUI < matlab.apps.AppBase
             % append error msg to log
             fprintf(f,formatSpec,err_msg);
             fclose(f);
-
-            % log to animal log file IF final comment was not x
-            if ~strcmp(inp_text,'x')
-                f2 = fopen(fullfile(savePath,animalID,'animal_log.txt'),'a');
-                for i =1:length(value)
-                    fprintf(f2,formatSpec,value{i});
-                end
-                % append error msg to log
-                fprintf(f2,formatSpec,err_msg);
-                fprintf(f2,formatSpec,'======================');
-                fprintf(f2,formatSpec,'======================');
-                fprintf(f2,formatSpec,'======================');
-                fclose(f2);
-            end
 
             % hash all data created on server
             debugMessage(app,['Hashing ',expID]);
@@ -3177,11 +3161,11 @@ classdef bvGUI < matlab.apps.AppBase
 
         % Button pushed function: LogButton
         function LogButtonPushed(app, event)
-            % get a new unique animal ID
-            config = app.getRepoConfig();
-            animalID = app.AnimalIDEditField.Value;
-            savePath = config.remoteSaveRoot;
-            dos(['notepad.exe "',fullfile(savePath,animalID,'animal_log.txt'),'"'])
+            if ~isempty(app.currentExperimentLogPath) && exist(app.currentExperimentLogPath,'file')
+                dos(['notepad.exe "',app.currentExperimentLogPath,'"'])
+            else
+                debugMessage(app,'No experiment log is available for this session.');
+            end
         end
     end
 
