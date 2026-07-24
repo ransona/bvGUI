@@ -1611,14 +1611,37 @@ classdef bvGUI < matlab.apps.AppBase
             end
 
             function discardCallback(~,~)
-                confirmation = questdlg( ...
-                    'Mark this experiment for deletion?', ...
-                    'Confirm discard', ...
-                    'Discard','Keep experiment','Keep experiment');
+                confirmation = confirmDiscard();
                 if strcmp(confirmation,'Discard')
                     finalComment = char(commentEdit.String);
                     discardExperiment = true;
                     delete(dlg);
+                end
+            end
+
+            function choice = confirmDiscard()
+                choice = 'Keep experiment';
+                confirmDlg = dialog('Name','Confirm discard','WindowStyle','modal','Visible','off','Position',[100 100 360 135]);
+                movegui(confirmDlg,'center');
+                uicontrol('Parent',confirmDlg,'Style','text','String','Do you want to discard this experiment?','HorizontalAlignment','left','Position',[25 80 310 22]);
+                uicontrol('Parent',confirmDlg,'Style','pushbutton','String','Discard','Position',[105 25 90 30],'Callback',@confirmDiscardCallback);
+                uicontrol('Parent',confirmDlg,'Style','pushbutton','String','Keep experiment','Position',[205 25 125 30],'Callback',@keepExperimentCallback);
+                confirmDlg.CloseRequestFcn = @keepExperimentCallback;
+                confirmDlg.Visible = 'on';
+                uiwait(confirmDlg);
+                if isvalid(confirmDlg)
+                    choice = confirmDlg.UserData;
+                    delete(confirmDlg);
+                end
+
+                function confirmDiscardCallback(~,~)
+                    confirmDlg.UserData = 'Discard';
+                    uiresume(confirmDlg);
+                end
+
+                function keepExperimentCallback(~,~)
+                    confirmDlg.UserData = 'Keep experiment';
+                    uiresume(confirmDlg);
                 end
             end
 
