@@ -525,7 +525,9 @@ classdef bvGUI < matlab.apps.AppBase
 
             udpSocket = [];
             timeoutPeriod = 600;
-            replyWaitPeriod = 1;
+            % Updating an experiment clears ScanImage state and can take several seconds.
+            % Do not retransmit during that transition, because each retry is the same request.
+            replyWaitPeriod = 10;
 
             try
                 udpSocket = udp(config.opto2pListener, config.opto2pPort);
@@ -542,7 +544,7 @@ classdef bvGUI < matlab.apps.AppBase
                 payload.trial_condition_indices = trialConditionIndices;
                 jsonPayload = jsonencode(payload);
                 fprintf(1,'UPDATE_EXPERIMENT_PARAMS_JSON_BEGIN\n%s\nUPDATE_EXPERIMENT_PARAMS_JSON_END\n', jsonPayload);
-                maxAttempts = 3;
+                maxAttempts = 1;
                 response = [];
                 for attempt = 1:maxAttempts
                     app.debugMessage(['Sending update_experiment_params attempt ',num2str(attempt),'/',num2str(maxAttempts),' for ',num2str(numel(stimulusConditions)),' stimulus conditions via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
