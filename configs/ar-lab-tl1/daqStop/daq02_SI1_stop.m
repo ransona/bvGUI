@@ -18,7 +18,7 @@ try
   if success == 1
     % then wait for ready signal from DAQ (i.e. when acquisition
     % running
-    success = udpComms.awaitReady(10);
+    success = udpComms.awaitReady(30);
     if success == 0
       msg = 'siTimed out waiting for response';
     end
@@ -35,4 +35,3 @@ catch
   end
 end
 end
-
