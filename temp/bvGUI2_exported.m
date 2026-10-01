@@ -808,7 +808,7 @@ classdef bvGUI < matlab.apps.AppBase
                 return;
             end
 
-            app.debugMessage('Computing masks');
+            app.debugMessage('Registering per-trial opto_2p preparation plan');
 
             timeoutPeriod = 600;
             try
@@ -822,7 +822,7 @@ classdef bvGUI < matlab.apps.AppBase
                     'seq_nums', prepData.seqNums);
                 jsonPayload = jsonencode(payload);
                 seqNumSummary = strjoin(app.jsonValueToTextCell(prepData.seqNums),', ');
-                app.debugMessage(['Preparing opto_2p masks for seq_nums [',seqNumSummary,'] via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
+                app.debugMessage(['Registering opto_2p trial plan for seq_nums [',seqNumSummary,'] via ',config.opto2pListener,':',num2str(config.opto2pPort)]);
                 app.writeUdpPayload(udpSocket, config.opto2pListener, config.opto2pPort, unicode2native(jsonPayload,'UTF-8'));
 
                 response = app.waitForUdpBytes(udpSocket, timeoutPeriod, true);
@@ -891,7 +891,7 @@ classdef bvGUI < matlab.apps.AppBase
                     patternSummary = strjoin(patternNames,', ');
                 end
 
-                app.debugMessage(['Opto_2p prep ready for schema ',prepData.schemaName,' and seq_nums [',seqNumSummary,']']);
+                app.debugMessage(['Opto_2p trial plan registered for schema ',prepData.schemaName,' and seq_nums [',seqNumSummary,']']);
                 if ~isempty(preparedSeqNumsSummary)
                     app.debugMessage(['Prepared seq_nums: ',preparedSeqNumsSummary]);
                 end
@@ -2319,15 +2319,10 @@ classdef bvGUI < matlab.apps.AppBase
                         break;
                     end
 
-                    if trialOpto2pData.enabled
-                        [success, startTrialErr] = app.startOpto2pTrial(config, conditionIndexByStimIdx(iStim));
+                    if opto2pPrep.enabled
+                        [success, startTrialErr] = app.startOpto2pTrial(config, iTrial - 1);
                         if ~success
                             app.requestRunAbort(startTrialErr);
-                            break;
-                        end
-                        [success, trialOpto2pErr] = app.triggerOpto2pForTrial(config, expID, trialOpto2pData);
-                        if ~success
-                            app.requestRunAbort(trialOpto2pErr);
                             break;
                         end
                     end
@@ -3005,16 +3000,10 @@ classdef bvGUI < matlab.apps.AppBase
                         testAborted = true;
                         break;
                     end
-                    if trialOpto2pData.enabled
-                        [success, startTrialErr] = app.startOpto2pTrial(config, conditionIndexByStimIdx(iStim));
+                    if opto2pPrep.enabled
+                        [success, startTrialErr] = app.startOpto2pTrial(config, iTrial - 1);
                         if ~success
                             app.debugMessage(startTrialErr);
-                            testAborted = true;
-                            break;
-                        end
-                        [success, trialOpto2pErr] = app.triggerOpto2pForTrial(config, expID, trialOpto2pData);
-                        if ~success
-                            app.debugMessage(trialOpto2pErr);
                             testAborted = true;
                             break;
                         end
